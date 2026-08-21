@@ -199,7 +199,7 @@ block tuples_arrays_and_items:
   doAssert toJson(named) == "{\"name\":\"x\",\"count\":2}"
   let withUnknown = "{\"name\":\"x\",\"extra\":true,\"count\":2}"
   doAssert fromJson(withUnknown, NamedTuple) == named
-  var rejected = NamedTuple()
+  var rejected = default(NamedTuple)
   doAssertRaises JsonParsingError:
     fromJson(withUnknown, rejected, ufReject)
   doAssert fromJson("[1,2,3]", array[3, int]) == [1, 2, 3]
