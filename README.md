@@ -1,7 +1,9 @@
 # brian
 
-Fast, typed JSON for Nim: decode straight into your types and encode straight
-into a string, without building a JSON DOM or scalar token objects.
+*Always look on the typed side of life.*
+
+Brian decodes straight into your Nim types and encodes straight into a string,
+without building a JSON DOM or scalar token objects.
 
 ## Why try it?
 
