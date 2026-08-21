@@ -140,6 +140,8 @@ block floats:
     doAssert cast[uint64](fromJson(input, float64)) == cast[uint64](expected)
   doAssertRaises JsonParsingError:
     discard fromJson("1e400", float64)
+  for value in [0.0, -0.0, 0.1, -12.5, 1.2345678901234567, 1.0e100, 1.0e-100]:
+    doAssert cast[uint64](fromJson(toJson(value), float64)) == cast[uint64](value)
 
 block tuples_arrays_and_items:
   doAssert fromJson("[1,\"x\",true]", (int, string, bool)) == (1, "x", true)
