@@ -102,6 +102,7 @@ block raw_values:
   doAssert toJson(RawJson("not validated here")) == "not validated here"
   let canonical = fromJson(" { \"x\" : [ 1, \"\\u03b1\" ] } ", CanonRawJson)
   doAssert string(canonical) == "{\"x\":[1,\"α\"]}"
+  doAssert string(fromJson("{\"\":1}", CanonRawJson)) == "{\"\":1}"
   doAssert string(fromJson("1e", RawJson)) == "1e"
   doAssert string(fromJson("-", RawJson)) == "-"
 
@@ -126,9 +127,36 @@ block parsejson_compatible_depth:
 block integer_limits:
   doAssert fromJson("-128", int8) == -128'i8
   doAssert fromJson("255", uint8) == 255'u8
+  doAssert fromJson("-32768", int16) == low(int16)
+  doAssert fromJson("32767", int16) == high(int16)
+  doAssert fromJson("65535", uint16) == high(uint16)
+  doAssert fromJson("-2147483648", int32) == low(int32)
+  doAssert fromJson("2147483647", int32) == high(int32)
+  doAssert fromJson("4294967295", uint32) == high(uint32)
+  doAssert fromJson("-9223372036854775808", int64) == low(int64)
+  doAssert fromJson("9223372036854775807", int64) == high(int64)
+  doAssert fromJson("18446744073709551615", uint64) == high(uint64)
   for input in ["128", "-129"]:
     doAssertRaises JsonParsingError:
       discard fromJson(input, int8)
+  doAssertRaises JsonParsingError:
+    discard fromJson("32768", int16)
+  doAssertRaises JsonParsingError:
+    discard fromJson("-32769", int16)
+  doAssertRaises JsonParsingError:
+    discard fromJson("65536", uint16)
+  doAssertRaises JsonParsingError:
+    discard fromJson("2147483648", int32)
+  doAssertRaises JsonParsingError:
+    discard fromJson("-2147483649", int32)
+  doAssertRaises JsonParsingError:
+    discard fromJson("4294967296", uint32)
+  doAssertRaises JsonParsingError:
+    discard fromJson("9223372036854775808", int64)
+  doAssertRaises JsonParsingError:
+    discard fromJson("-9223372036854775809", int64)
+  doAssertRaises JsonParsingError:
+    discard fromJson("18446744073709551616", uint64)
   doAssertRaises JsonParsingError:
     discard fromJson("-1", uint8)
   doAssert fromJson("-0", uint8) == 0'u8
@@ -154,6 +182,9 @@ block floats:
     doAssert parseutils.parseFloat(input, expected) == input.len
     doAssert cast[uint64](fromJson(input, float64)) == cast[uint64](expected)
   doAssert classify(fromJson("1e400", float64)) == fcInf
+  for input in ["1e", "1e+", "-"]:
+    doAssertRaises JsonParsingError:
+      discard fromJson(input, float64)
   for value in [0.0, -0.0, 0.1, -12.5, 1.2345678901234567, 1.0e100, 1.0e-100]:
     doAssert cast[uint64](fromJson(toJson(value), float64)) == cast[uint64](value)
 

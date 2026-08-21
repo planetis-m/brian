@@ -34,7 +34,9 @@ type
   JsonWriter* = object
     ## Output sink supplied to custom `writeJson` overloads.
     output: string
+      ## Storage capacity until `finish` truncates it to the written length.
     data: ptr UncheckedArray[char]
+      ## A write cursor into `output`; the minimum capacity keeps it heap-backed.
     pos: int
 
   RawJson* = distinct string
@@ -43,8 +45,12 @@ type
   CanonRawJson* = distinct string
     ## A deterministic, whitespace-free re-emission of one JSON value.
 
+proc `=copy`(dest: var JsonWriter; src: JsonWriter) {.error.}
+
 const
   DepthLimit = 1_000
+  MinWriteCapacity = 64
+    ## Keeps writer storage heap-backed so `data` remains valid across moves.
   Digits100 =
     "000102030405060708091011121314151617181920212223242526272829" &
     "303132333435363738394041424344454647484950515253545556575859" &
@@ -106,7 +112,8 @@ proc addSpan(dst: var string; source: ptr UncheckedArray[char]; start, stop: int
     let oldLength = dst.len
     {.cast(noSideEffect).}:
       copyMem(beginStore(dst, oldLength + length, oldLength), addr source[start], length)
-      endStore(dst)
+      if oldLength < 8:
+        endStore(dst)
 
 proc parseString(r: var JsonParser; dst: var string; rawStart: var int;
                  rawLength: var int; hadEscape: var bool) =
@@ -388,9 +395,9 @@ proc nextElement(r: var JsonParser; first: var bool): bool =
 
 proc toString(field: Field): string =
   ## Materializes an owned copy of this ephemeral field name.
-  result = newString(field.len)
   if field.len > 0:
-    copyMem(addr result[0], addr field.data[0], field.len)
+    copyMem(beginStore(result, field.len), field.data, field.len)
+    endStore(result)
 
 {.push boundChecks: off.}
 
@@ -600,7 +607,7 @@ proc reserve(w: var JsonWriter; extra: int) {.inline.} =
   if required > w.output.len:
     if w.data != nil:
       w.output.endStore()
-    let newLen = max(required, max(64, w.output.len * 2))
+    let newLen = max(required, max(MinWriteCapacity, w.output.len * 2))
     w.data = w.output.beginStore(newLen)
 
 proc append(w: var JsonWriter; source: ptr UncheckedArray[char]; start, len: int) {.inline.} =
@@ -761,10 +768,10 @@ proc writeJson*(w: var JsonWriter; value: RawJson) =
   w.write string(value)
 
 proc finish(w: var JsonWriter): string =
+  w.output.setLen(w.pos)
   if w.data != nil:
     w.output.endStore()
     w.data = nil
-  w.output.setLen(w.pos)
   result = w.output
 
 proc canonicalizeValue(r: var JsonParser; w: var JsonWriter) =
