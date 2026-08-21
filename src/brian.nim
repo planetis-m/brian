@@ -5,7 +5,7 @@
 ## bytes follow `std/parsejson` compatibility semantics; JSON `\\u` escapes
 ## are decoded.
 
-import std/[formatfloat, math, options, parseutils, strutils]
+import std/[formatfloat, math, options, parseutils, sets, strutils, tables]
 from std/typetraits import isNamedTuple
 
 type
@@ -552,6 +552,40 @@ proc readJson*[T](dst: var seq[T]; r: var JsonParser; unknownFields: UnknownFiel
     dst.add default(T)
     readJson(dst[^1], r, unknownFields)
 
+proc readJson*[T](dst: var set[T]; r: var JsonParser; unknownFields: UnknownFieldPolicy) =
+  dst = {}
+  r.beginArray()
+  var first = true
+  mixin readJson
+  while r.nextElement(first):
+    var item = default(T)
+    readJson(item, r, unknownFields)
+    dst.incl item
+
+proc readJson*[T](dst: var SomeSet[T]; r: var JsonParser;
+                   unknownFields: UnknownFieldPolicy) =
+  dst.clear()
+  r.beginArray()
+  var first = true
+  mixin readJson
+  while r.nextElement(first):
+    var item = default(T)
+    readJson(item, r, unknownFields)
+    dst.incl item
+
+proc readJson*[T](dst: var (Table[string, T]|OrderedTable[string, T]);
+                  r: var JsonParser; unknownFields: UnknownFieldPolicy) =
+  dst.clear()
+  r.beginObject()
+  var first = true
+  var fieldName: FieldName
+  mixin readJson
+  while r.nextField(first, fieldName):
+    let key = fieldName.toString()
+    var value = default(T)
+    readJson(value, r, unknownFields)
+    dst[key] = value
+
 proc readJson*[I, T](dst: var array[I, T]; r: var JsonParser;
                       unknownFields: UnknownFieldPolicy) =
   r.beginArray()
@@ -748,6 +782,29 @@ proc writeJson*[I, T](w: var JsonWriter; value: array[I, T]) =
     else: comma = true
     writeJson(w, item)
   w.put ']'
+
+proc writeJson*[T](w: var JsonWriter; value: set[T]|SomeSet[T]) =
+  w.put '['
+  var comma = false
+  mixin writeJson
+  for item in value:
+    if comma: w.put ','
+    else: comma = true
+    writeJson(w, item)
+  w.put ']'
+
+proc writeJson*[T](w: var JsonWriter;
+                   value: Table[string, T]|OrderedTable[string, T]) =
+  w.put '{'
+  var comma = false
+  mixin writeJson
+  for key, item in pairs(value):
+    if comma: w.put ','
+    else: comma = true
+    w.escapeJson(key)
+    w.put ':'
+    writeJson(w, item)
+  w.put '}'
 
 proc writeObject[T](w: var JsonWriter; value: T) {.inline.} =
   w.put '{'

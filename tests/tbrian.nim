@@ -1,4 +1,4 @@
-import std/[assertions, math, options, parseutils, strutils]
+import std/[assertions, math, options, parseutils, sets, strutils, tables]
 import brian
 
 type
@@ -210,6 +210,32 @@ block tuples_arrays_and_items:
   var collected: seq[int] = @[]
   for value in jsonItems("[1,2,3]", int): collected.add value
   doAssert collected == @[1, 2, 3]
+
+block sets_and_tables:
+  var colours = {red}
+  fromJson("[\"blue\"]", colours)
+  doAssert colours == {blue}
+  doAssert toJson({red, blue}) == "[\"red\",\"blue\"]"
+
+  let hashed = fromJson("[1,2,2]", HashSet[int])
+  doAssert hashed == [1, 2].toHashSet()
+  doAssert fromJson(toJson(hashed), HashSet[int]) == hashed
+
+  let ordered = ["first", "second"].toOrderedSet()
+  doAssert toJson(ordered) == "[\"first\",\"second\"]"
+  doAssert fromJson(toJson(ordered), OrderedSet[string]) == ordered
+
+  var numbers = {"stale": 9}.toTable()
+  fromJson("{\"one\":1,\"t\\u0077o\":2}", numbers)
+  doAssert numbers == {"one": 1, "two": 2}.toTable()
+
+  let orderedTable = [("one", 1), ("two", 2)].toOrderedTable()
+  doAssert toJson(orderedTable) == "{\"one\":1,\"two\":2}"
+  doAssert fromJson(toJson(orderedTable), OrderedTable[string, int]) == orderedTable
+
+  let duplicate = fromJson("{\"item\":{\"value\":1},\"item\":{}}",
+                           Table[string, Child])
+  doAssert duplicate["item"] == Child()
 
 block raw_string_compatibility:
   doAssert fromJson("\"\\x\"", string) == "\\x"
