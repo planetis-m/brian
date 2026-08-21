@@ -16,6 +16,10 @@ instruction profiles from the same release build and fixed payload.
 - `objects_known` — compile-time `fieldPairs` mapping for known object fields.
 - `unknown_skip` — nested unknown object and array skipping.
 - `integers` — checked integer accumulation.
+- `arrays` — fixed-size array element traversal.
+- `tuples` — positional tuple field traversal.
+- `sets` — hashed set construction from an array.
+- `tables` — string-keyed table construction from an object.
 - `floats_fast` — exact scalar float fast path.
 - `floats_fallback` — exact float fallback conversion.
 - `raw_values` — `RawJson` capture through value skipping.
@@ -23,3 +27,5 @@ instruction profiles from the same release build and fixed payload.
 - `write_integers` — direct integer serialization into the writer buffer.
 - `write_objects` — object field names, values, and writer composition.
 - `write_raw` — trusted `RawJson` serialization.
+- `write_sets` — ordered hashed-set serialization.
+- `write_tables` — ordered string-keyed table serialization.

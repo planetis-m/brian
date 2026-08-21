@@ -1,8 +1,42 @@
 # brian
 
-`brian` is a standalone typed JSON library for Nim. It reads directly from a
-contiguous input string into the requested Nim type and writes directly to the
-final output string—there is no JSON DOM or scalar token layer.
+Fast, typed JSON for Nim: decode straight into your types and encode straight
+into a string, without building a JSON DOM or scalar token objects.
+
+## Why try it?
+
+- **Direct typed mapping.** Objects, tuples, sequences, arrays, options, sets,
+  tables, enums, and references map to their natural Nim types.
+- **A deliberately small API.** Most code only needs `fromJson` and `toJson`;
+  custom formats use ordinary `readJson` and `writeJson` overloads.
+- **Low overhead.** The parser borrows ordinary object keys from the input and
+  writes into the final output buffer.
+- **Strict where it matters.** Brian rejects malformed structure, broken Unicode
+  escapes and high-surrogate pairs, integer overflow, type mismatches, and
+  trailing data.
+- **Standalone.** Brian does not depend on jsonx, jsony, or their internals.
+
+## Install
+
+Add Brian to your `.nimble` file:
+
+```nim
+requires "https://github.com/planetis-m/brian"
+```
+
+Then resolve dependencies with Atlas:
+
+```sh
+atlas install
+```
+
+Or install it directly with Nimble:
+
+```sh
+nimble install https://github.com/planetis-m/brian
+```
+
+## Quick start
 
 ```nim
 import brian
@@ -10,53 +44,183 @@ import brian
 type Person = object
   name: string
   age: int
+  active: bool
 
-let person = fromJson("{\"name\":\"Ada\",\"age\":37}", Person)
-let encoded = toJson(person)
+let person = fromJson(
+  """{"name":"Ada","age":37,"active":true}""",
+  Person
+)
+
+echo person.name
+echo toJson(person)
+# Ada
+# {"name":"Ada","age":37,"active":true}
 ```
 
-Custom readers use ordinary overloads. `jsonFields` is only needed for a
-hand-written object shape; generated object decoding remains allocation-free.
+Object fields are matched by name. Unknown fields are skipped by default, which
+makes readers tolerant of additive API changes. Ask for an exact shape when you
+need one:
 
 ```nim
+let compatible = fromJson(payload, Person)
+let exact = fromJson(payload, Person, unknownFields = ufReject)
+```
+
+Both modes still validate known values and malformed JSON. Parse failures raise
+`JsonParsingError`.
+
+## Read a large top-level array one item at a time
+
+`jsonItems` decodes each item directly instead of first creating a `seq` for the
+whole array:
+
+```nim
+import brian
+
+type Event = object
+  id: int
+  name: string
+
+for event in jsonItems(
+  """[{"id":1,"name":"opened"},{"id":2,"name":"closed"}]""",
+  Event
+):
+  echo event.id, ": ", event.name
+```
+
+The input is still one contiguous string; iteration avoids materializing the
+outer collection, not buffering the input itself.
+
+## Keep JSON you do not want to model
+
+Use `RawJson` for an embedded value whose schema belongs to another system.
+Brian validates and captures the consumed representation without parsing and
+reserializing it:
+
+```nim
+import brian
+
+type Tool = object
+  name: string
+  schema: RawJson
+
+let tool = fromJson(
+  """{"name":"search","schema": { "type": "object" }}""",
+  Tool
+)
+
+echo string(tool.schema) # { "type": "object" }
+echo toJson(tool)        # {"name":"search","schema":{ "type": "object" }}
+```
+
+`CanonRawJson` instead re-emits a whitespace-free representation and decodes
+string escapes. It preserves object field order; it does not sort keys.
+
+Values parsed into `RawJson` are validated. Manually constructing a `RawJson`
+marks its bytes as trusted, so only do that with a complete valid JSON value.
+
+## Custom JSON shapes
+
+Customization is normal Nim overload resolution. This type accepts either a
+JSON string or an array of strings and writes the same shape back:
+
+```nim
+import brian
+
+type
+  ContentKind = enum
+    text, parts
+
+  Content = object
+    case kind: ContentKind
+    of text:
+      body: string
+    of parts:
+      items: seq[string]
+
 proc readJson(dst: var Content; p: var JsonParser;
-               unknownFields: UnknownFieldPolicy) =
+              unknownFields: UnknownFieldPolicy) =
   case p.kind
-  of jkString: readJson(dst.text, p, unknownFields)
-  of jkArray: readJson(dst.parts, p, unknownFields)
-  else: p.raiseParseError("expected string or array")
+  of jkString:
+    dst = Content(kind: text)
+    readJson(dst.body, p, unknownFields)
+  of jkArray:
+    dst = Content(kind: parts)
+    readJson(dst.items, p, unknownFields)
+  else:
+    p.raiseParseError("expected string or array")
+
+proc writeJson(w: var JsonWriter; value: Content) =
+  case value.kind
+  of text:
+    writeJson(w, value.body)
+  of parts:
+    writeJson(w, value.items)
+
+let content = fromJson("[\"first\",\"second\"]", Content)
+echo toJson(content) # ["first","second"]
 ```
 
-Custom writers use the writer as a direct output sink:
+For hand-written object readers, iterate `p.jsonFields` and call `p.skipJson()`
+for fields you choose not to decode. Custom writers can append JSON syntax with
+`w.write`, escape keys or strings with `w.escapeJson`, and delegate values back
+to `writeJson`.
 
-```nim
-proc writeJson(w: var JsonWriter; value: Page) =
-  w.write "{\"page\":"
-  writeJson(w, value.page)
-  w.write ",\"status\":"
-  writeJson(w, value.status)
-  w.write "}"
-```
+## Supported mappings
 
-The primary API is `fromJson`, `toJson`, `readJson`, `writeJson`, `RawJson`,
-`CanonRawJson`, `UnknownFieldPolicy`, and `jsonItems`.
+- JSON strings map to `string` and enums.
+- JSON numbers map to Nim integer and floating-point types with checked integer
+  conversion.
+- JSON arrays map to `seq`, `array`, unnamed tuples, `set`, `HashSet`, and
+  `OrderedSet`.
+- JSON objects map to objects, named tuples, `Table[string, T]`, and
+  `OrderedTable[string, T]`.
+- JSON `null` maps to `none(T)` and `nil` for reference objects.
 
-## Testing
+Import `std/options`, `std/sets`, or `std/tables` when using the corresponding
+Nim container type.
 
-Run the complete matrix, including AddressSanitizer and both Nim string modes:
+## Performance
+
+Brian's focused benchmarks use Cachegrind instruction counts rather than
+wall-clock timings. In a matched typed-object workload compiled with Nim 2.3.1
+and `-d:release`, changing only the imported library produced:
+
+| Workload | Brian | jsonx | jsonx / Brian |
+| --- | ---: | ---: | ---: |
+| Decode 20,000 six-field objects | 96.49M instructions | 108.61M | 1.13x |
+| Encode 40,000 six-field objects | 77.53M instructions | 287.01M | 3.70x |
+
+These are focused microbenchmarks, not a promise that every payload has the same
+ratio. The programs in [`bench/`](bench/) isolate strings, numbers, objects,
+containers, unknown-field skipping, raw JSON, and writing paths so changes can
+be measured one dimension at a time.
+
+## API at a glance
+
+- `fromJson(input, T)` returns a decoded value.
+- `fromJson(input, dst)` decodes into an existing value.
+- `toJson(value)` returns the encoded string.
+- `jsonItems(input, T)` iterates a top-level array.
+- `readJson(dst, parser, policy)` customizes decoding.
+- `writeJson(writer, value)` customizes encoding.
+- `RawJson` preserves a captured JSON representation.
+- `CanonRawJson` produces a compact normalized representation.
+
+## Run the tests and benchmarks
+
+Run the full matrix, including debug, release, danger, both Nim string modes,
+and AddressSanitizer:
 
 ```sh
 nim c -r -d:release tests/tester.nim
 ```
 
-## String bytes
+Run one focused release benchmark from the repository root:
 
-`toJson` follows jsonx-compatible raw-byte behavior for Nim strings: it escapes
-JSON control bytes, `"`, and `\\`, and otherwise preserves the input bytes. It
-does not perform a separate UTF-8 validation pass during serialization.
+```sh
+nim c -d:release bench/objects_known.nim
+valgrind --tool=cachegrind ./bench/objects_known
+```
 
-## Raw JSON
-
-`RawJson` is trusted during serialization, matching jsonx. Values obtained via
-`fromJson(..., RawJson)` are validated while captured; manually constructed
-`RawJson` values must already contain one valid JSON value.
+Brian is available under the MIT license.
