@@ -188,10 +188,13 @@ Brian's focused benchmarks use Cachegrind instruction counts rather than
 wall-clock timings. In a matched typed-object workload compiled with Nim 2.3.1
 and `-d:release`, changing only the imported library produced:
 
-| Workload | Brian | jsonx | jsonx / Brian |
-| --- | ---: | ---: | ---: |
-| Decode 20,000 six-field objects | 96.49M instructions | 108.61M | 1.13x |
-| Encode 40,000 six-field objects | 77.53M instructions | 287.01M | 3.70x |
+| Library | Decode 20,000 objects | vs Brian | Encode 40,000 objects | vs Brian |
+| --- | ---: | ---: | ---: | ---: |
+| Brian | 96.49M instructions | 1.00x | 77.53M instructions | 1.00x |
+| jsonx | 108.61M | 1.13x | 287.01M | 3.70x |
+| jsony | 120.25M | 1.25x | 94.60M | 1.22x |
+
+Lower is better.
 
 These are focused microbenchmarks, not a promise that every payload has the same
 ratio. The programs in [`bench/`](bench/) isolate strings, numbers, objects,
