@@ -16,5 +16,6 @@ nimcache/
 /bench/floats_fallback
 /bench/raw_values
 /bench/write_strings
+/bench/write_integers
 /bench/write_objects
 /bench/write_raw

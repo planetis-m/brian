@@ -41,6 +41,14 @@ proc writeJson(w: var JsonWriter; value: Page) =
 The primary API is `fromJson`, `toJson`, `readJson`, `writeJson`, `RawJson`,
 `CanonRawJson`, `UnknownFieldPolicy`, and `jsonItems`.
 
+## Testing
+
+Run the complete matrix, including AddressSanitizer and both Nim string modes:
+
+```sh
+nim c -r -d:release tests/tester.nim
+```
+
 ## String bytes
 
 `toJson` follows jsonx-compatible raw-byte behavior for Nim strings: it escapes

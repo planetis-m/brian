@@ -494,6 +494,8 @@ proc skipValue(r: var JsonParser) =
   else:
     fail(r.pos, "expected value")
 
+{.pop.}
+
 proc skipJson*(p: var JsonParser) =
   ## Discards one JSON value, validating it without materializing it.
   p.skipValue()
@@ -600,8 +602,6 @@ proc readJson*(dst: var RawJson; r: var JsonParser; unknownFields: UnknownFieldP
     copyMem(beginStore(raw, len), addr r.data[start], len)
     endStore(raw)
   dst = RawJson(raw)
-
-{.pop.}
 
 proc reserve(w: var JsonWriter; extra: int) {.inline.} =
   let required = w.pos + extra
@@ -769,7 +769,7 @@ proc finish(w: var JsonWriter): string =
   if w.data != nil:
     w.output.endStore()
     w.data = nil
-  w.output.setLenUninit(w.pos)
+  w.output.setLen(w.pos)
   w.output
 
 proc canonicalizeValue(r: var JsonParser; w: var JsonWriter) =
