@@ -1,4 +1,4 @@
-import std/[assertions, options, parseutils]
+import std/[assertions, math, options, parseutils, strutils]
 import brian
 
 type
@@ -102,6 +102,8 @@ block raw_values:
   doAssert toJson(RawJson("not validated here")) == "not validated here"
   let canonical = fromJson(" { \"x\" : [ 1, \"\\u03b1\" ] } ", CanonRawJson)
   doAssert string(canonical) == "{\"x\":[1,\"α\"]}"
+  doAssert string(fromJson("1e", RawJson)) == "1e"
+  doAssert string(fromJson("-", RawJson)) == "-"
 
 block field_lifetime_and_unknown_policy:
   var destination: Sample
@@ -109,10 +111,17 @@ block field_lifetime_and_unknown_policy:
     fromJson("{\"name\":\"x\",\"extra\":1}", destination, ufReject)
 
 block malformed_input:
-  for input in ["1e", "+1", "[1,]", "{\"x\":1,}",
-                "true false", "\"\\ud800\"", "\"\\udc00\"", "\"\\u12xz\""]:
+  for input in ["+1", "[1,]", "{\"x\":1,}",
+                "true false", "\"\\ud800\"", "\"\\u12xz\""]:
     doAssertRaises JsonParsingError:
       discard fromJson(input, RawJson)
+
+block parsejson_compatible_depth:
+  let accepted = repeat('[', 1_001) & repeat(']', 1_001)
+  discard fromJson(accepted, RawJson)
+  let rejected = repeat('[', 1_002) & repeat(']', 1_002)
+  doAssertRaises JsonParsingError:
+    discard fromJson(rejected, RawJson)
 
 block integer_limits:
   doAssert fromJson("-128", int8) == -128'i8
@@ -122,6 +131,7 @@ block integer_limits:
       discard fromJson(input, int8)
   doAssertRaises JsonParsingError:
     discard fromJson("-1", uint8)
+  doAssert fromJson("-0", uint8) == 0'u8
 
 block integer_serialization_boundaries:
   for value in [0'i64, 9, 10, 99, 100, 101, 9_999, 10_000, -1, -99, -100]:
@@ -143,8 +153,7 @@ block floats:
     var expected: float64
     doAssert parseutils.parseFloat(input, expected) == input.len
     doAssert cast[uint64](fromJson(input, float64)) == cast[uint64](expected)
-  doAssertRaises JsonParsingError:
-    discard fromJson("1e400", float64)
+  doAssert classify(fromJson("1e400", float64)) == fcInf
   for value in [0.0, -0.0, 0.1, -12.5, 1.2345678901234567, 1.0e100, 1.0e-100]:
     doAssert cast[uint64](fromJson(toJson(value), float64)) == cast[uint64](value)
 
@@ -156,8 +165,12 @@ block tuples_arrays_and_items:
   doAssert collected == @[1, 2, 3]
 
 block raw_string_compatibility:
-  doAssert fromJson("\"\\x\"", string) == "x"
+  doAssert fromJson("\"\\x\"", string) == "\\x"
+  doAssert fromJson("\"\\v\"", string) == "\v"
+  doAssert fromJson("\"\\udc00\"", string) == "\xED\xB0\x80"
+  doAssert string(fromJson("\"\\udc00\"", RawJson)) == "\"\\udc00\""
 
 block string_serialization:
   doAssert toJson("line\nbreak") == "\"line\\nbreak\""
   doAssert toJson("\xff") == "\"\xff\""
+  doAssert toJson("\v\x0e\x1f") == "\"\\u000b\\u000E\\u001F\""
