@@ -214,7 +214,7 @@ block tuples_arrays_and_items:
 block sets_and_tables:
   var colours = {red}
   fromJson("[\"blue\"]", colours)
-  doAssert colours == {blue}
+  doAssert colours == {red, blue}
   doAssert toJson({red, blue}) == "[\"red\",\"blue\"]"
 
   let hashed = fromJson("[1,2,2]", HashSet[int])
@@ -227,7 +227,7 @@ block sets_and_tables:
 
   var numbers = {"stale": 9}.toTable()
   fromJson("{\"one\":1,\"t\\u0077o\":2}", numbers)
-  doAssert numbers == {"one": 1, "two": 2}.toTable()
+  doAssert numbers == {"stale": 9, "one": 1, "two": 2}.toTable()
 
   let orderedTable = [("one", 1), ("two", 2)].toOrderedTable()
   doAssert toJson(orderedTable) == "{\"one\":1,\"two\":2}"

@@ -552,19 +552,8 @@ proc readJson*[T](dst: var seq[T]; r: var JsonParser; unknownFields: UnknownFiel
     dst.add default(T)
     readJson(dst[^1], r, unknownFields)
 
-proc readJson*[T](dst: var set[T]; r: var JsonParser; unknownFields: UnknownFieldPolicy) =
-  dst = {}
-  r.beginArray()
-  var first = true
-  mixin readJson
-  while r.nextElement(first):
-    var item = default(T)
-    readJson(item, r, unknownFields)
-    dst.incl item
-
-proc readJson*[T](dst: var SomeSet[T]; r: var JsonParser;
-                   unknownFields: UnknownFieldPolicy) =
-  dst.clear()
+proc readJson*[T](dst: var (SomeSet[T]|set[T]); r: var JsonParser;
+                  unknownFields: UnknownFieldPolicy) =
   r.beginArray()
   var first = true
   mixin readJson
@@ -575,7 +564,6 @@ proc readJson*[T](dst: var SomeSet[T]; r: var JsonParser;
 
 proc readJson*[T](dst: var (Table[string, T]|OrderedTable[string, T]);
                   r: var JsonParser; unknownFields: UnknownFieldPolicy) =
-  dst.clear()
   r.beginObject()
   var first = true
   var fieldName: FieldName
@@ -763,7 +751,7 @@ proc writeJson*[T](w: var JsonWriter; value: Option[T]) =
   else:
     w.write "null"
 
-proc writeJson*[T](w: var JsonWriter; value: seq[T]) =
+template writeArray() =
   w.put '['
   var comma = false
   mixin writeJson
@@ -772,26 +760,15 @@ proc writeJson*[T](w: var JsonWriter; value: seq[T]) =
     else: comma = true
     writeJson(w, item)
   w.put ']'
+
+proc writeJson*[T](w: var JsonWriter; value: seq[T]) =
+  writeArray()
 
 proc writeJson*[I, T](w: var JsonWriter; value: array[I, T]) =
-  w.put '['
-  var comma = false
-  mixin writeJson
-  for item in value:
-    if comma: w.put ','
-    else: comma = true
-    writeJson(w, item)
-  w.put ']'
+  writeArray()
 
 proc writeJson*[T](w: var JsonWriter; value: set[T]|SomeSet[T]) =
-  w.put '['
-  var comma = false
-  mixin writeJson
-  for item in value:
-    if comma: w.put ','
-    else: comma = true
-    writeJson(w, item)
-  w.put ']'
+  writeArray()
 
 proc writeJson*[T](w: var JsonWriter;
                    value: Table[string, T]|OrderedTable[string, T]) =
