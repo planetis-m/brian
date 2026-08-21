@@ -6,6 +6,7 @@
 ## are decoded.
 
 import std/[formatfloat, math, options, parseutils, strutils]
+from std/typetraits import isNamedTuple
 
 type
   JsonParsingError* = object of ValueError
@@ -554,26 +555,17 @@ proc readJson*[T](dst: var seq[T]; r: var JsonParser; unknownFields: UnknownFiel
 proc readJson*[I, T](dst: var array[I, T]; r: var JsonParser;
                       unknownFields: UnknownFieldPolicy) =
   r.beginArray()
-  var index = 0
   var first = true
   mixin readJson
-  while r.nextElement(first):
-    if index >= dst.len: r.raiseParseError("expected array with " & $dst.len & " elements")
-    readJson(dst[I(index + ord(low(I)))], r, unknownFields)
-    inc index
-  if index != dst.len: r.raiseParseError("expected array with " & $dst.len & " elements")
-
-proc readJson*[T: tuple](dst: var T; r: var JsonParser; unknownFields: UnknownFieldPolicy) =
-  r.beginArray()
-  var first = true
-  mixin readJson
-  for _, field in fieldPairs(dst):
+  for item in mitems(dst):
     if not r.nextElement(first):
-      r.raiseParseError("expected tuple with the expected number of elements")
-    readJson(field, r, unknownFields)
-  if r.nextElement(first): r.raiseParseError("expected tuple with the expected number of elements")
+      r.raiseParseError("expected array with " & $dst.len & " elements")
+    readJson(item, r, unknownFields)
+  if r.nextElement(first):
+    r.raiseParseError("expected array with " & $dst.len & " elements")
 
-proc readJson*[T: object](dst: var T; r: var JsonParser; unknownFields: UnknownFieldPolicy) =
+proc readObjectFields[T](dst: var T; r: var JsonParser;
+                         unknownFields: UnknownFieldPolicy) {.inline.} =
   r.beginObject()
   mixin readJson
   var first = true
@@ -589,6 +581,23 @@ proc readJson*[T: object](dst: var T; r: var JsonParser; unknownFields: UnknownF
       if unknownFields == ufReject:
         r.raiseParseError("expected known field, got \"" & jsonField.toString() & "\"")
       r.skipValue()
+
+proc readJson*[T: tuple](dst: var T; r: var JsonParser; unknownFields: UnknownFieldPolicy) =
+  when isNamedTuple(T):
+    readObjectFields(dst, r, unknownFields)
+  else:
+    r.beginArray()
+    var first = true
+    mixin readJson
+    for field in fields(dst):
+      if not r.nextElement(first):
+        r.raiseParseError("expected tuple with the expected number of elements")
+      readJson(field, r, unknownFields)
+    if r.nextElement(first):
+      r.raiseParseError("expected tuple with the expected number of elements")
+
+proc readJson*[T: object](dst: var T; r: var JsonParser; unknownFields: UnknownFieldPolicy) =
+  readObjectFields(dst, r, unknownFields)
 
 proc readJson*[T: ref object](dst: var T; r: var JsonParser;
                                unknownFields: UnknownFieldPolicy) =
@@ -663,14 +672,6 @@ proc escapeJson*(w: var JsonWriter; value: string) =
       runStart = i + 1
   w.append(data, runStart, value.len - runStart)
   w.put '"'
-
-template writeKnownField(w: var JsonWriter; comma: var bool; name: static[string];
-                         value: untyped) =
-  if comma: w.put ','
-  else: comma = true
-  const prefix = "\"" & name & "\":"
-  w.write prefix
-  writeJson(w, value)
 
 proc writeJson*(w: var JsonWriter; value: string) =
   w.escapeJson(value)
@@ -748,23 +749,33 @@ proc writeJson*[I, T](w: var JsonWriter; value: array[I, T]) =
     writeJson(w, item)
   w.put ']'
 
-proc writeJson*[T: tuple](w: var JsonWriter; value: T) =
-  w.put '['
-  var comma = false
-  mixin writeJson
-  for _, field in fieldPairs(value):
-    if comma: w.put ','
-    else: comma = true
-    writeJson(w, field)
-  w.put ']'
-
-proc writeJson*[T: object](w: var JsonWriter; value: T) =
+proc writeObject[T](w: var JsonWriter; value: T) {.inline.} =
   w.put '{'
   var comma = false
   mixin writeJson
   for name, field in fieldPairs(value):
-    writeKnownField(w, comma, name, field)
+    if comma: w.put ','
+    else: comma = true
+    const prefix = "\"" & name & "\":"
+    w.write prefix
+    writeJson(w, field)
   w.put '}'
+
+proc writeJson*[T: tuple](w: var JsonWriter; value: T) =
+  when isNamedTuple(T):
+    writeObject(w, value)
+  else:
+    w.put '['
+    var comma = false
+    mixin writeJson
+    for field in fields(value):
+      if comma: w.put ','
+      else: comma = true
+      writeJson(w, field)
+    w.put ']'
+
+proc writeJson*[T: object](w: var JsonWriter; value: T) =
+  writeObject(w, value)
 
 proc writeJson*[T: ref object](w: var JsonWriter; value: T) =
   if value.isNil:

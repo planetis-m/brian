@@ -187,10 +187,26 @@ block floats:
       discard fromJson(input, float64)
   for value in [0.0, -0.0, 0.1, -12.5, 1.2345678901234567, 1.0e100, 1.0e-100]:
     doAssert cast[uint64](fromJson(toJson(value), float64)) == cast[uint64](value)
+  for value in [NaN, Inf, -Inf]:
+    doAssertRaises ValueError:
+      discard toJson(value)
 
 block tuples_arrays_and_items:
   doAssert fromJson("[1,\"x\",true]", (int, string, bool)) == (1, "x", true)
+  type NamedTuple = tuple[name: string, count: int]
+  let named = fromJson("{\"name\":\"x\",\"count\":2}", NamedTuple)
+  doAssert named == (name: "x", count: 2)
+  doAssert toJson(named) == "{\"name\":\"x\",\"count\":2}"
+  let withUnknown = "{\"name\":\"x\",\"extra\":true,\"count\":2}"
+  doAssert fromJson(withUnknown, NamedTuple) == named
+  var rejected = NamedTuple()
+  doAssertRaises JsonParsingError:
+    fromJson(withUnknown, rejected, ufReject)
   doAssert fromJson("[1,2,3]", array[3, int]) == [1, 2, 3]
+  doAssert fromJson("[]", array[0, int]) == default(array[0, int])
+  for input in ["[1,2]", "[1,2,3,4]"]:
+    doAssertRaises JsonParsingError:
+      discard fromJson(input, array[3, int])
   var collected: seq[int] = @[]
   for value in jsonItems("[1,2,3]", int): collected.add value
   doAssert collected == @[1, 2, 3]
