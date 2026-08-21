@@ -90,6 +90,11 @@ block custom_object_and_writer:
   doAssert page == Page(number: 4, status: "ok")
   doAssert toJson(page) == "{\"number\":4,\"status\":\"ok\"}"
 
+block escaped_field_names:
+  doAssert fromJson("{\"na\\u006de\":\"x\"}", Sample).name == "x"
+  let page = fromJson("{\"num\\u0062er\":4,\"sta\\u0074us\":\"ok\"}", Page)
+  doAssert page == Page(number: 4, status: "ok")
+
 block raw_values:
   let raw = fromJson(" { \"x\" : [ 1, \"\\u03b1\" ] } ", RawJson)
   doAssert string(raw) == "{ \"x\" : [ 1, \"\\u03b1\" ] }"

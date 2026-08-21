@@ -64,8 +64,6 @@ proc raiseParseError*(p: JsonParser; message: string) {.noinline, noreturn.} =
   ## Raises a parse error suitable for custom `readJson` overloads.
   raise newException(JsonParsingError, "JSON at byte " & $p.pos & ": " & message)
 
-{.push boundChecks: off.}
-
 proc skip(r: var JsonParser) {.inline.} =
   while r.pos < r.len and r.data[r.pos] in {' ', '\t', '\n', '\r'}:
     inc r.pos
@@ -166,18 +164,6 @@ proc parseString(r: var JsonParser; dst: var string; rawStart: var int;
     else:
       discard
   r.raiseParseError("unterminated string")
-
-proc kind*(r: var JsonParser): JsonKind =
-  r.skip()
-  if r.pos >= r.len: r.raiseParseError("expected value")
-  case r.data[r.pos]
-  of 'n': jkNull
-  of 't', 'f': jkBool
-  of '"': jkString
-  of '[': jkArray
-  of '{': jkObject
-  of '-', '.', '0'..'9': jkNumber
-  else: r.raiseParseError("expected value")
 
 proc readString(r: var JsonParser; dst: var string) =
   var start, length: int
@@ -360,19 +346,24 @@ proc nextField(r: var JsonParser; first: var bool; field: var Field): bool =
     inc r.pos
     r.skip()
     if r.pos < r.len and r.data[r.pos] == '}': r.raiseParseError("trailing comma in object")
-  var start, length: int
-  var escaped = false
-  r.parseString(r.scratch, start, length, escaped)
-  if escaped:
-    field = Field(
-      data: cast[ptr UncheckedArray[char]](cstring(r.scratch)),
-      len: r.scratch.len
-    )
+  if r.pos >= r.len or r.data[r.pos] != '"':
+    r.raiseParseError("expected string")
+  inc r.pos
+  let start = r.pos
+  while r.pos < r.len and r.data[r.pos] notin {'"', '\\'}:
+    inc r.pos
+  if r.pos >= r.len:
+    r.raiseParseError("unterminated string")
+  if r.data[r.pos] == '"':
+    field = Field(data: cast[ptr UncheckedArray[char]](addr r.data[start]),
+                  len: r.pos - start)
+    inc r.pos
   else:
-    field = Field(
-      data: cast[ptr UncheckedArray[char]](addr r.data[start]),
-      len: length
-    )
+    r.pos = start - 1
+    var rawStart, rawLength: int
+    var escaped = false
+    r.parseString(r.scratch, rawStart, rawLength, escaped)
+    field = Field(data: cast[ptr UncheckedArray[char]](cstring(r.scratch)), len: r.scratch.len)
   r.skip()
   if r.pos >= r.len or r.data[r.pos] != ':': r.raiseParseError("expected colon")
   inc r.pos
@@ -412,6 +403,8 @@ proc toString(field: Field): string =
   if field.len > 0:
     copyMem(addr result[0], addr field.data[0], field.len)
 
+{.push boundChecks: off.}
+
 proc `==`(field: Field; value: string): bool {.inline.} =
   if field.len != value.len:
     false
@@ -420,15 +413,9 @@ proc `==`(field: Field; value: string): bool {.inline.} =
       if field.data[i] != value[i]: return false
     true
 
-proc `==`(value: string; field: Field): bool {.inline.} = field == value
+{.pop.}
 
-iterator jsonFields*(p: var JsonParser): string =
-  ## Iterates an object and leaves `p` positioned at each field value.
-  p.beginObject()
-  var first = true
-  var field: Field
-  while p.nextField(first, field):
-    yield field.toString()
+proc `==`(value: string; field: Field): bool {.inline.} = field == value
 
 proc skipString(r: var JsonParser) =
   r.skip()
@@ -491,7 +478,25 @@ proc skipValue(r: var JsonParser) =
   else:
     r.raiseParseError("expected value")
 
-{.pop.}
+proc kind*(p: var JsonParser): JsonKind =
+  p.skip()
+  if p.pos >= p.len: p.raiseParseError("expected value")
+  case p.data[p.pos]
+  of 'n': jkNull
+  of 't', 'f': jkBool
+  of '"': jkString
+  of '[': jkArray
+  of '{': jkObject
+  of '-', '.', '0'..'9': jkNumber
+  else: p.raiseParseError("expected value")
+
+iterator jsonFields*(p: var JsonParser): string =
+  ## Iterates an object and leaves `p` positioned at each field value.
+  p.beginObject()
+  var first = true
+  var field: Field
+  while p.nextField(first, field):
+    yield field.toString()
 
 proc skipJson*(p: var JsonParser) =
   ## Discards one JSON value, validating it without materializing it.
@@ -575,6 +580,7 @@ proc readJson*[T: object](dst: var T; r: var JsonParser; unknownFields: UnknownF
       if jsonField == name:
         readJson(field, r, unknownFields)
         known = true
+        break
     if not known:
       if unknownFields == ufReject:
         r.raiseParseError("expected known field, got \"" & jsonField.toString() & "\"")

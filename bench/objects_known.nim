@@ -22,7 +22,7 @@ proc makePayload(): string =
 
 let payload = makePayload()
 var checksum = 0
-for iteration in 0..<20:
+for iteration in 0..<100:
   let values = fromJson(payload, seq[Record])
   doAssert values.len == 200
   checksum += values[iteration mod values.len].labels.len

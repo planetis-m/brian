@@ -9,7 +9,7 @@ proc makePayload(): string =
 
 let payload = makePayload()
 var checksum = 0'i64
-for iteration in 0..<20:
+for iteration in 0..<100:
   let values = fromJson(payload, seq[int64])
   doAssert values.len == 1_000
   checksum += values[iteration mod values.len]
