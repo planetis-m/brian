@@ -31,7 +31,7 @@ proc readJson*(dst: var Page; p: var JsonParser;
     of "status": readJson(dst.status, p, unknownFields)
     else:
       if unknownFields == ufReject:
-        p.raiseExpected("known field, got \"" & name & "\"")
+        p.raiseParseError("expected known field, got \"" & name & "\"")
       p.skipJson()
 
 proc readJson*(dst: var Content; p: var JsonParser;
@@ -44,7 +44,7 @@ proc readJson*(dst: var Content; p: var JsonParser;
     dst = Content(kind: parts)
     readJson(dst.items, p, unknownFields)
   else:
-    p.raiseExpected("string or array")
+    p.raiseParseError("expected string or array")
 
 proc writeJson*(w: var JsonWriter; value: Content) =
   case value.kind

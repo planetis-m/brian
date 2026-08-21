@@ -24,7 +24,7 @@ proc readJson(dst: var Content; p: var JsonParser;
   case p.kind
   of jkString: readJson(dst.text, p, unknownFields)
   of jkArray: readJson(dst.parts, p, unknownFields)
-  else: p.raiseExpected("string or array")
+  else: p.raiseParseError("expected string or array")
 ```
 
 Custom writers use the writer as a direct output sink:
