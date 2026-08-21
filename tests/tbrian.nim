@@ -19,22 +19,44 @@ type
     case kind: ContentKind
     of text: body: string
     of parts: items: seq[string]
+  Page = object
+    number: int
+    status: string
 
-proc readJson*(dst: var Content; r: var JsonReader; options: JsonReadOptions) =
-  case r.kind
+proc readJson*(dst: var Page; p: var JsonParser;
+               unknownFields: UnknownFieldPolicy) =
+  for name in p.jsonFields:
+    case name
+    of "number": readJson(dst.number, p, unknownFields)
+    of "status": readJson(dst.status, p, unknownFields)
+    else:
+      if unknownFields == ufReject:
+        p.raiseExpected("known field, got \"" & name & "\"")
+      p.skipJson()
+
+proc readJson*(dst: var Content; p: var JsonParser;
+               unknownFields: UnknownFieldPolicy) =
+  case p.kind
   of jkString:
     dst = Content(kind: text)
-    readJson(dst.body, r, options)
+    readJson(dst.body, p, unknownFields)
   of jkArray:
     dst = Content(kind: parts)
-    readJson(dst.items, r, options)
+    readJson(dst.items, p, unknownFields)
   else:
-    r.raiseExpected("string or array")
+    p.raiseExpected("string or array")
 
 proc writeJson*(w: var JsonWriter; value: Content) =
   case value.kind
   of text: writeJson(w, value.body)
   of parts: writeJson(w, value.items)
+
+proc writeJson*(w: var JsonWriter; value: Page) =
+  w.write "{\"number\":"
+  writeJson(w, value.number)
+  w.write ",\"status\":"
+  writeJson(w, value.status)
+  w.write "}"
 
 block object_round_trip:
   let source = """{
@@ -63,6 +85,11 @@ block custom_union:
   doAssert partContent.items == @["a", "b"]
   doAssert toJson(Content(kind: parts, items: @["a", "b"])) == "[\"a\",\"b\"]"
 
+block custom_object_and_writer:
+  let page = fromJson("{\"number\":4,\"status\":\"ok\"}", Page)
+  doAssert page == Page(number: 4, status: "ok")
+  doAssert toJson(page) == "{\"number\":4,\"status\":\"ok\"}"
+
 block raw_values:
   let raw = fromJson(" { \"x\" : [ 1, \"\\u03b1\" ] } ", RawJson)
   doAssert string(raw) == "{ \"x\" : [ 1, \"\\u03b1\" ] }"
@@ -74,19 +101,13 @@ block raw_values:
 block field_lifetime_and_unknown_policy:
   var destination: Sample
   doAssertRaises JsonParsingError:
-    fromJson("{\"name\":\"x\",\"extra\":1}", destination,
-      JsonReadOptions(unknownFields: ufReject, maxDepth: 256))
+    fromJson("{\"name\":\"x\",\"extra\":1}", destination, ufReject)
 
 block malformed_input:
   for input in ["1e", "+1", "[1,]", "{\"x\":1,}",
                 "true false", "\"\\ud800\"", "\"\\udc00\"", "\"\\u12xz\""]:
     doAssertRaises JsonParsingError:
       discard fromJson(input, RawJson)
-
-block depth_limit:
-  let options = JsonReadOptions(unknownFields: ufSkip, maxDepth: 2)
-  doAssertRaises JsonParsingError:
-    discard fromJson("[[[]]]", RawJson, options)
 
 block integer_limits:
   doAssert fromJson("-128", int8) == -128'i8

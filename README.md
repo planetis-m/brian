@@ -15,21 +15,31 @@ let person = fromJson("{\"name\":\"Ada\",\"age\":37}", Person)
 let encoded = toJson(person)
 ```
 
-Custom representation types use ordinary overloads:
+Custom readers use ordinary overloads. `jsonFields` is only needed for a
+hand-written object shape; generated object decoding remains allocation-free.
 
 ```nim
-proc readJson(dst: var Content; r: var JsonReader; options: JsonReadOptions) =
-  case r.kind
-  of jkString: readJson(dst.text, r, options)
-  of jkArray: readJson(dst.parts, r, options)
-  else: r.raiseExpected("string or array")
+proc readJson(dst: var Content; p: var JsonParser;
+               unknownFields: UnknownFieldPolicy) =
+  case p.kind
+  of jkString: readJson(dst.text, p, unknownFields)
+  of jkArray: readJson(dst.parts, p, unknownFields)
+  else: p.raiseExpected("string or array")
 ```
 
-The initial package provides in-memory parsing/serialization, jsonx-compatible
-raw-string handling with surrogate validation, typed scalars, sequences,
-arrays, tuples, objects, `Option`, `RawJson`, unknown-field policies, and depth
-limits. Buffered input and output are intentionally deferred to a subsequent
-layer so the contiguous reader/writer hot path remains simple.
+Custom writers use the writer as a direct output sink:
+
+```nim
+proc writeJson(w: var JsonWriter; value: Page) =
+  w.write "{\"page\":"
+  writeJson(w, value.page)
+  w.write ",\"status\":"
+  writeJson(w, value.status)
+  w.write "}"
+```
+
+The primary API is `fromJson`, `toJson`, `readJson`, `writeJson`, `RawJson`,
+`CanonRawJson`, `UnknownFieldPolicy`, and `jsonItems`.
 
 ## String bytes
 

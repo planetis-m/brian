@@ -16,39 +16,23 @@ type
   UnknownFieldPolicy* = enum
     ufSkip, ufReject
 
-  JsonReadOptions* = object
-    ## Settings shared by built-in and custom `readJson` overloads.
-    unknownFields*: UnknownFieldPolicy
-    maxDepth*: Positive
-
-  JsonField* = object
+  JsonField = object
     ## An ephemeral object field name.  Ordinary unescaped names borrow the
     ## input; escaped names borrow reader-owned scratch storage.
     source: ptr UncheckedArray[char]
     start, length: int
     decoded: ptr string
 
-  JsonReader* = object
-    ## A value-type cursor over one contiguous JSON input buffer.
+  JsonParser* = object
+    ## Cursor state supplied to custom `readJson` overloads.
     input: string
     pos: int
-    maxDepth: int
     firsts: seq[bool]
     fieldScratch: string
 
-  WriteContainerKind = enum
-    wckArray, wckObject
-
-  WriteContainer = object
-    kind: WriteContainerKind
-    first: bool
-    expectsValue: bool
-
   JsonWriter* = object
-    ## A value-type JSON writer whose output is its final string buffer.
+    ## Output sink supplied to custom `writeJson` overloads.
     output: string
-    containers: seq[WriteContainer]
-    wroteRoot: bool
 
   RawJson* = distinct string
     ## Trusted bytes representing one JSON value.
@@ -68,37 +52,31 @@ const DecimalPowers: array[-22..22, float64] = [
   1.0e18, 1.0e19, 1.0e20, 1.0e21, 1.0e22
 ]
 
-proc defaultJsonReadOptions*(): JsonReadOptions {.inline.} =
-  JsonReadOptions(unknownFields: ufSkip, maxDepth: DefaultMaxDepth)
+proc initJsonParser(input: string): JsonParser {.inline.} =
+  JsonParser(input: input)
 
-proc initJsonReader*(input: string;
-                     options = defaultJsonReadOptions()): JsonReader {.inline.} =
-  ## Creates a reader that borrows `input` for the duration of parsing.
-  JsonReader(input: input, maxDepth: int(options.maxDepth))
-
-proc initJsonWriter*(): JsonWriter {.inline.} =
-  ## Creates an in-memory writer.
+proc initJsonWriter(): JsonWriter {.inline.} =
   JsonWriter()
 
 proc fail(pos: int; message: string) {.noinline, noreturn.} =
   raise newException(JsonParsingError, "JSON at byte " & $pos & ": " & message)
 
-proc raiseExpected*(r: JsonReader; expected: string) {.noinline, noreturn.} =
-  ## Raises a parsing error suitable for custom `readJson` overloads.
-  fail(r.pos, "expected " & expected)
+proc raiseExpected*(p: JsonParser; expected: string) {.noinline, noreturn.} =
+  ## Raises a parse error suitable for custom `readJson` overloads.
+  fail(p.pos, "expected " & expected)
 
 {.push boundChecks: off.}
 
-proc skipSpace(r: var JsonReader) {.inline.} =
+proc skipSpace(r: var JsonParser) {.inline.} =
   while r.pos < r.input.len and r.input[r.pos] in {' ', '\t', '\n', '\r'}:
     inc r.pos
 
-proc push(r: var JsonReader) {.inline.} =
-  if r.firsts.len >= r.maxDepth:
+proc push(r: var JsonParser) {.inline.} =
+  if r.firsts.len >= DefaultMaxDepth:
     fail(r.pos, "maximum nesting depth exceeded")
   r.firsts.add true
 
-proc pop(r: var JsonReader) {.inline.} =
+proc pop(r: var JsonParser) {.inline.} =
   r.firsts.setLen(r.firsts.len - 1)
 
 proc hexValue(c: char): int {.inline.} =
@@ -126,7 +104,7 @@ proc appendCodePoint(dst: var string; codePoint: int; pos: int) =
     dst.add char(0x80 or ((codePoint shr 6) and 0x3f))
     dst.add char(0x80 or (codePoint and 0x3f))
 
-proc readHexEscape(r: var JsonReader): int =
+proc readHexEscape(r: var JsonParser): int =
   if r.pos + 4 > r.input.len:
     fail(r.pos, "incomplete Unicode escape")
   for _ in 0..<4:
@@ -142,7 +120,7 @@ proc addSpan(dst: var string; source: string; start, stop: int) {.inline.} =
     dst.setLen(oldLength + length)
     copyMem(addr dst[oldLength], unsafeAddr source[start], length)
 
-proc parseString(r: var JsonReader; dst: var string; rawStart: var int;
+proc parseString(r: var JsonParser; dst: var string; rawStart: var int;
                  rawLength: var int; hadEscape: var bool) =
   r.skipSpace()
   if r.pos >= r.input.len or r.input[r.pos] != '"':
@@ -197,7 +175,7 @@ proc parseString(r: var JsonReader; dst: var string; rawStart: var int;
       discard
   fail(r.pos, "unterminated string")
 
-proc kind*(r: var JsonReader): JsonKind =
+proc kind*(r: var JsonParser): JsonKind =
   r.skipSpace()
   if r.pos >= r.input.len: fail(r.pos, "expected value")
   case r.input[r.pos]
@@ -214,7 +192,7 @@ proc copyStringSpan(dst: var string; source: string; start, length: int) {.inlin
   if length > 0:
     copyMem(addr dst[0], unsafeAddr source[start], length)
 
-proc readString*(r: var JsonReader; dst: var string) =
+proc readString(r: var JsonParser; dst: var string) =
   var start, length: int
   var escaped = false
   var decoded = ""
@@ -224,7 +202,7 @@ proc readString*(r: var JsonReader; dst: var string) =
   else:
     copyStringSpan(dst, r.input, start, length)
 
-proc consumeNull(r: var JsonReader): bool {.inline.} =
+proc consumeNull(r: var JsonParser): bool {.inline.} =
   r.skipSpace()
   if r.input.len - r.pos < 4 or r.input[r.pos] != 'n' or r.input[r.pos + 1] != 'u' or
       r.input[r.pos + 2] != 'l' or r.input[r.pos + 3] != 'l':
@@ -232,11 +210,11 @@ proc consumeNull(r: var JsonReader): bool {.inline.} =
   r.pos += 4
   true
 
-proc readNull*(r: var JsonReader) =
+proc readNull(r: var JsonParser) =
   if not r.consumeNull():
     fail(r.pos, "expected null")
 
-proc readBool*(r: var JsonReader; dst: var bool) =
+proc readBool(r: var JsonParser; dst: var bool) =
   r.skipSpace()
   if r.input.len - r.pos >= 4 and r.input[r.pos] == 't' and r.input[r.pos + 1] == 'r' and
       r.input[r.pos + 2] == 'u' and r.input[r.pos + 3] == 'e':
@@ -249,7 +227,7 @@ proc readBool*(r: var JsonReader; dst: var bool) =
   else:
     fail(r.pos, "expected boolean")
 
-proc scanNumber(r: var JsonReader; start: var int; integerOnly: bool) =
+proc scanNumber(r: var JsonParser; start: var int; integerOnly: bool) =
   r.skipSpace()
   start = r.pos
   if r.pos < r.input.len and r.input[r.pos] == '-': inc r.pos
@@ -267,7 +245,7 @@ proc scanNumber(r: var JsonReader; start: var int; integerOnly: bool) =
     while r.pos < r.input.len and r.input[r.pos] in {'0'..'9'}: inc r.pos
     if r.pos == exponentStart: fail(r.pos, "missing exponent digits")
 
-proc readInt*[T: SomeInteger](r: var JsonReader; dst: var T) =
+proc readInt[T: SomeInteger](r: var JsonParser; dst: var T) =
   r.skipSpace()
   var negative = false
   if r.pos < r.input.len and r.input[r.pos] == '-':
@@ -306,7 +284,7 @@ proc readInt*[T: SomeInteger](r: var JsonReader; dst: var T) =
     else:
       dst = T(value)
 
-proc readFloat*[T: SomeFloat](r: var JsonReader; dst: var T) =
+proc readFloat[T: SomeFloat](r: var JsonParser; dst: var T) =
   ## Uses a small exact fast path and the stdlib converter for difficult values.
   r.skipSpace()
   let start = r.pos
@@ -366,13 +344,13 @@ proc readFloat*[T: SomeFloat](r: var JsonReader; dst: var T) =
   if classify(float64(dst)) in {fcInf, fcNegInf, fcNan}:
     fail(start, "floating-point value out of range")
 
-proc beginObject*(r: var JsonReader) =
+proc beginObject(r: var JsonParser) =
   r.skipSpace()
   if r.pos >= r.input.len or r.input[r.pos] != '{': fail(r.pos, "expected object")
   inc r.pos
   r.push()
 
-proc nextField*(r: var JsonReader; field: var JsonField): bool =
+proc nextField(r: var JsonParser; field: var JsonField): bool =
   assert r.firsts.len > 0
   r.skipSpace()
   if r.firsts[^1]:
@@ -408,13 +386,13 @@ proc nextField*(r: var JsonReader; field: var JsonField): bool =
   inc r.pos
   true
 
-proc beginArray*(r: var JsonReader) =
+proc beginArray(r: var JsonParser) =
   r.skipSpace()
   if r.pos >= r.input.len or r.input[r.pos] != '[': fail(r.pos, "expected array")
   inc r.pos
   r.push()
 
-proc nextElement*(r: var JsonReader): bool =
+proc nextElement(r: var JsonParser): bool =
   assert r.firsts.len > 0
   r.skipSpace()
   if r.firsts[^1]:
@@ -435,7 +413,7 @@ proc nextElement*(r: var JsonReader): bool =
     if r.pos < r.input.len and r.input[r.pos] == ']': fail(r.pos, "trailing comma in array")
   true
 
-proc toString*(field: JsonField): string =
+proc toString(field: JsonField): string =
   ## Materializes an owned copy of this ephemeral field name.
   if field.decoded == nil:
     result = newString(field.length)
@@ -444,7 +422,7 @@ proc toString*(field: JsonField): string =
   else:
     result = field.decoded[]
 
-proc `==`*(field: JsonField; value: string): bool {.inline.} =
+proc `==`(field: JsonField; value: string): bool {.inline.} =
   if field.decoded != nil:
     field.decoded[] == value
   elif field.length != value.len:
@@ -454,9 +432,16 @@ proc `==`*(field: JsonField; value: string): bool {.inline.} =
       if field.source[field.start + i] != value[i]: return false
     true
 
-proc `==`*(value: string; field: JsonField): bool {.inline.} = field == value
+proc `==`(value: string; field: JsonField): bool {.inline.} = field == value
 
-proc skipString(r: var JsonReader) =
+iterator jsonFields*(p: var JsonParser): string =
+  ## Iterates an object and leaves `p` positioned at each field value.
+  p.beginObject()
+  var field: JsonField
+  while p.nextField(field):
+    yield field.toString()
+
+proc skipString(r: var JsonParser) =
   r.skipSpace()
   if r.pos >= r.input.len or r.input[r.pos] != '"': fail(r.pos, "expected string")
   inc r.pos
@@ -491,7 +476,7 @@ proc skipString(r: var JsonReader) =
       discard
   fail(r.pos, "unterminated string")
 
-proc skipValue*(r: var JsonReader) =
+proc skipValue(r: var JsonParser) =
   ## Validates and discards exactly one value without materializing a DOM.
   r.skipSpace()
   if r.pos >= r.input.len:
@@ -515,28 +500,35 @@ proc skipValue*(r: var JsonReader) =
   else:
     fail(r.pos, "expected value")
 
-proc finish(r: var JsonReader) =
+proc skipJson*(p: var JsonParser) =
+  ## Discards one JSON value, validating it without materializing it.
+  p.skipValue()
+
+proc finish(r: var JsonParser) =
   if r.firsts.len != 0: fail(r.pos, "unterminated container")
   r.skipSpace()
   if r.pos != r.input.len: fail(r.pos, "trailing data")
 
-proc readJson*(dst: var string; r: var JsonReader; options: JsonReadOptions) =
-  discard options
+proc readJson*(dst: var string; r: var JsonParser; unknownFields: UnknownFieldPolicy) =
+  discard unknownFields
   r.readString(dst)
 
-proc readJson*(dst: var bool; r: var JsonReader; options: JsonReadOptions) =
-  discard options
+proc readJson*(dst: var bool; r: var JsonParser; unknownFields: UnknownFieldPolicy) =
+  discard unknownFields
   r.readBool(dst)
 
-proc readJson*[T: SomeInteger](dst: var T; r: var JsonReader; options: JsonReadOptions) =
-  discard options
+proc readJson*[T: SomeInteger](dst: var T; r: var JsonParser;
+                                unknownFields: UnknownFieldPolicy) =
+  discard unknownFields
   r.readInt(dst)
 
-proc readJson*[T: SomeFloat](dst: var T; r: var JsonReader; options: JsonReadOptions) =
-  discard options
+proc readJson*[T: SomeFloat](dst: var T; r: var JsonParser;
+                              unknownFields: UnknownFieldPolicy) =
+  discard unknownFields
   r.readFloat(dst)
 
-proc readJson*[T: enum](dst: var T; r: var JsonReader; options: JsonReadOptions) =
+proc readJson*[T: enum](dst: var T; r: var JsonParser; unknownFields: UnknownFieldPolicy) =
+  discard unknownFields
   var value: string
   r.readString(value)
   try:
@@ -544,42 +536,43 @@ proc readJson*[T: enum](dst: var T; r: var JsonReader; options: JsonReadOptions)
   except ValueError:
     r.raiseExpected("a valid " & $T)
 
-proc readJson*[T](dst: var Option[T]; r: var JsonReader; options: JsonReadOptions) =
+proc readJson*[T](dst: var Option[T]; r: var JsonParser; unknownFields: UnknownFieldPolicy) =
   if r.consumeNull():
     dst = none(T)
   else:
     var value: T
     mixin readJson
-    readJson(value, r, options)
+    readJson(value, r, unknownFields)
     dst = some(value)
 
-proc readJson*[T](dst: var seq[T]; r: var JsonReader; options: JsonReadOptions) =
+proc readJson*[T](dst: var seq[T]; r: var JsonParser; unknownFields: UnknownFieldPolicy) =
   dst.setLen(0)
   r.beginArray()
   mixin readJson
   while r.nextElement():
     dst.add default(T)
-    readJson(dst[^1], r, options)
+    readJson(dst[^1], r, unknownFields)
 
-proc readJson*[I, T](dst: var array[I, T]; r: var JsonReader; options: JsonReadOptions) =
+proc readJson*[I, T](dst: var array[I, T]; r: var JsonParser;
+                      unknownFields: UnknownFieldPolicy) =
   r.beginArray()
   var index = 0
   mixin readJson
   while r.nextElement():
     if index >= dst.len: r.raiseExpected("array with " & $dst.len & " elements")
-    readJson(dst[I(index + ord(low(I)))], r, options)
+    readJson(dst[I(index + ord(low(I)))], r, unknownFields)
     inc index
   if index != dst.len: r.raiseExpected("array with " & $dst.len & " elements")
 
-proc readJson*[T: tuple](dst: var T; r: var JsonReader; options: JsonReadOptions) =
+proc readJson*[T: tuple](dst: var T; r: var JsonParser; unknownFields: UnknownFieldPolicy) =
   r.beginArray()
   mixin readJson
   for _, field in fieldPairs(dst):
     if not r.nextElement(): r.raiseExpected("tuple with the expected number of elements")
-    readJson(field, r, options)
+    readJson(field, r, unknownFields)
   if r.nextElement(): r.raiseExpected("tuple with the expected number of elements")
 
-proc readJson*[T: object](dst: var T; r: var JsonReader; options: JsonReadOptions) =
+proc readJson*[T: object](dst: var T; r: var JsonParser; unknownFields: UnknownFieldPolicy) =
   r.beginObject()
   mixin readJson
   var jsonField: JsonField
@@ -587,23 +580,24 @@ proc readJson*[T: object](dst: var T; r: var JsonReader; options: JsonReadOption
     var known = false
     for name, field in fieldPairs(dst):
       if jsonField == name:
-        readJson(field, r, options)
+        readJson(field, r, unknownFields)
         known = true
     if not known:
-      if options.unknownFields == ufReject:
+      if unknownFields == ufReject:
         r.raiseExpected("known field, got \"" & jsonField.toString() & "\"")
       r.skipValue()
 
-proc readJson*[T: ref object](dst: var T; r: var JsonReader; options: JsonReadOptions) =
+proc readJson*[T: ref object](dst: var T; r: var JsonParser;
+                               unknownFields: UnknownFieldPolicy) =
   if r.consumeNull():
     dst = nil
   else:
     new dst
     mixin readJson
-    readJson(dst[], r, options)
+    readJson(dst[], r, unknownFields)
 
-proc readJson*(dst: var RawJson; r: var JsonReader; options: JsonReadOptions) =
-  discard options
+proc readJson*(dst: var RawJson; r: var JsonParser; unknownFields: UnknownFieldPolicy) =
+  discard unknownFields
   r.skipSpace()
   let start = r.pos
   r.skipValue()
@@ -613,41 +607,13 @@ proc readJson*(dst: var RawJson; r: var JsonReader; options: JsonReadOptions) =
 
 {.pop.}
 
-proc beforeValue(w: var JsonWriter) =
-  if w.containers.len == 0:
-    if w.wroteRoot: raise newException(ValueError, "JSON writer already has a root value")
-    w.wroteRoot = true
-  else:
-    case w.containers[^1].kind
-    of wckArray:
-      if not w.containers[^1].first: w.output.add ','
-      w.containers[^1].first = false
-    of wckObject:
-      if not w.containers[^1].expectsValue:
-        raise newException(ValueError, "object value needs a field name")
-      w.containers[^1].expectsValue = false
+proc write*(w: var JsonWriter; value: string) {.inline.} =
+  ## Appends raw JSON syntax from a custom serializer.
+  w.output.add value
 
-proc beginObject*(w: var JsonWriter) =
-  w.beforeValue()
-  w.output.add '{'
-  w.containers.add WriteContainer(kind: wckObject, first: true)
-
-proc endObject*(w: var JsonWriter) =
-  if w.containers.len == 0 or w.containers[^1].kind != wckObject or w.containers[^1].expectsValue:
-    raise newException(ValueError, "invalid object writer state")
-  w.output.add '}'
-  w.containers.setLen(w.containers.len - 1)
-
-proc beginArray*(w: var JsonWriter) =
-  w.beforeValue()
-  w.output.add '['
-  w.containers.add WriteContainer(kind: wckArray, first: true)
-
-proc endArray*(w: var JsonWriter) =
-  if w.containers.len == 0 or w.containers[^1].kind != wckArray:
-    raise newException(ValueError, "invalid array writer state")
-  w.output.add ']'
-  w.containers.setLen(w.containers.len - 1)
+proc write*(w: var JsonWriter; value: char) {.inline.} =
+  ## Appends one raw JSON syntax character from a custom serializer.
+  w.output.add value
 
 proc writeEscapedString(w: var JsonWriter; value: string) =
   w.output.add '"'
@@ -675,32 +641,29 @@ proc writeEscapedString(w: var JsonWriter; value: string) =
   addSpan(w.output, value, runStart, value.len)
   w.output.add '"'
 
-proc writeField*(w: var JsonWriter; name: string) =
-  ## Emits a field name in the current object; the next write supplies its value.
-  if w.containers.len == 0 or w.containers[^1].kind != wckObject or w.containers[^1].expectsValue:
-    raise newException(ValueError, "field name outside an object")
-  if not w.containers[^1].first: w.output.add ','
-  w.containers[^1].first = false
-  w.writeEscapedString(name)
-  w.output.add ':'
-  w.containers[^1].expectsValue = true
+proc escapeJson*(w: var JsonWriter; value: string) =
+  ## Writes one JSON string, including quotes and required escapes.
+  w.writeEscapedString(value)
+
+template writeKnownField(w: var JsonWriter; comma: var bool; name: static[string];
+                         value: untyped) =
+  if comma: w.write ','
+  else: comma = true
+  w.write "\"" & name & "\":"
+  writeJson(w, value)
 
 proc writeJson*(w: var JsonWriter; value: string) =
-  w.beforeValue()
   w.writeEscapedString(value)
 
 proc writeJson*(w: var JsonWriter; value: bool) =
-  w.beforeValue()
   w.output.add(if value: "true" else: "false")
 
 proc writeJson*[T: SomeInteger](w: var JsonWriter; value: T) =
-  w.beforeValue()
   w.output.addInt(value)
 
 proc writeJson*[T: SomeFloat](w: var JsonWriter; value: T) =
   if classify(float64(value)) in {fcInf, fcNegInf, fcNan}:
     raise newException(ValueError, "JSON cannot represent NaN or infinity")
-  w.beforeValue()
   w.output.add $value
 
 proc writeJson*[T: enum](w: var JsonWriter; value: T) =
@@ -711,53 +674,61 @@ proc writeJson*[T](w: var JsonWriter; value: Option[T]) =
     mixin writeJson
     writeJson(w, value.get)
   else:
-    w.beforeValue()
     w.output.add "null"
 
 proc writeJson*[T](w: var JsonWriter; value: seq[T]) =
-  w.beginArray()
+  w.write '['
+  var comma = false
   mixin writeJson
-  for item in value: writeJson(w, item)
-  w.endArray()
+  for item in value:
+    if comma: w.write ','
+    else: comma = true
+    writeJson(w, item)
+  w.write ']'
 
 proc writeJson*[I, T](w: var JsonWriter; value: array[I, T]) =
-  w.beginArray()
+  w.write '['
+  var comma = false
   mixin writeJson
-  for item in value: writeJson(w, item)
-  w.endArray()
+  for item in value:
+    if comma: w.write ','
+    else: comma = true
+    writeJson(w, item)
+  w.write ']'
 
 proc writeJson*[T: tuple](w: var JsonWriter; value: T) =
-  w.beginArray()
+  w.write '['
+  var comma = false
   mixin writeJson
-  for _, field in fieldPairs(value): writeJson(w, field)
-  w.endArray()
+  for _, field in fieldPairs(value):
+    if comma: w.write ','
+    else: comma = true
+    writeJson(w, field)
+  w.write ']'
 
 proc writeJson*[T: object](w: var JsonWriter; value: T) =
-  w.beginObject()
+  w.write '{'
+  var comma = false
   mixin writeJson
   for name, field in fieldPairs(value):
-    w.writeField(name)
-    writeJson(w, field)
-  w.endObject()
+    writeKnownField(w, comma, name, field)
+  w.write '}'
 
 proc writeJson*[T: ref object](w: var JsonWriter; value: T) =
   if value.isNil:
-    w.beforeValue()
     w.output.add "null"
   else:
     mixin writeJson
     writeJson(w, value[])
 
 proc writeJson*(w: var JsonWriter; value: RawJson) =
-  w.beforeValue()
   w.output.add string(value)
 
-proc canonicalizeValue(r: var JsonReader; w: var JsonWriter) =
+proc canonicalizeValue(r: var JsonParser; w: var JsonWriter) =
   case r.kind
   of jkNull:
     r.readNull()
-    w.beforeValue()
-    w.output.add "null"
+    w.write "null"
   of jkBool:
     var value: bool
     r.readBool(value)
@@ -769,24 +740,32 @@ proc canonicalizeValue(r: var JsonReader; w: var JsonWriter) =
   of jkNumber:
     var start: int
     r.scanNumber(start, false)
-    w.beforeValue()
     addSpan(w.output, r.input, start, r.pos)
   of jkArray:
     r.beginArray()
-    w.beginArray()
-    while r.nextElement(): r.canonicalizeValue(w)
-    w.endArray()
+    w.write '['
+    var comma = false
+    while r.nextElement():
+      if comma: w.write ','
+      else: comma = true
+      r.canonicalizeValue(w)
+    w.write ']'
   of jkObject:
     r.beginObject()
-    w.beginObject()
+    w.write '{'
+    var comma = false
     var field: JsonField
     while r.nextField(field):
-      w.writeField(field.toString())
+      if comma: w.write ','
+      else: comma = true
+      w.escapeJson(field.toString())
+      w.write ':'
       r.canonicalizeValue(w)
-    w.endObject()
+    w.write '}'
 
-proc readJson*(dst: var CanonRawJson; r: var JsonReader; options: JsonReadOptions) =
-  discard options
+proc readJson*(dst: var CanonRawJson; r: var JsonParser;
+               unknownFields: UnknownFieldPolicy) =
+  discard unknownFields
   var writer = initJsonWriter()
   r.canonicalizeValue(writer)
   dst = CanonRawJson(writer.output)
@@ -795,25 +774,22 @@ proc writeJson*(w: var JsonWriter; value: CanonRawJson) =
   w.writeJson(RawJson(string(value)))
 
 proc fromJson*[T](input: string; typ: typedesc[T];
-                  options = defaultJsonReadOptions()): T =
+                  unknownFields = ufSkip): T =
   ## Decodes one complete JSON value from `input`.
-  var reader = initJsonReader(input, options)
+  var reader = initJsonParser(input)
   mixin readJson
-  readJson(result, reader, options)
+  readJson(result, reader, unknownFields)
   reader.finish()
 
 proc fromJson*[T](input: string; dst: var T;
-                  options = defaultJsonReadOptions()) =
+                  unknownFields = ufSkip) =
   ## Decodes one complete JSON value directly into `dst`.
-  var reader = initJsonReader(input, options)
+  var reader = initJsonParser(input)
   mixin readJson
-  readJson(dst, reader, options)
+  readJson(dst, reader, unknownFields)
   reader.finish()
 
-proc finish*(w: JsonWriter): string =
-  ## Returns the finished JSON string.
-  if not w.wroteRoot or w.containers.len != 0:
-    raise newException(ValueError, "unfinished JSON writer")
+proc finish(w: JsonWriter): string =
   w.output
 
 proc toJson*[T](value: T): string =
@@ -824,13 +800,13 @@ proc toJson*[T](value: T): string =
   writer.finish()
 
 iterator jsonItems*[T](input: string; typ: typedesc[T];
-                       options = defaultJsonReadOptions()): T =
+                       unknownFields = ufSkip): T =
   ## Decodes the elements of one top-level JSON array lazily.
-  var reader = initJsonReader(input, options)
+  var reader = initJsonParser(input)
   reader.beginArray()
   mixin readJson
   while reader.nextElement():
     var value: T
-    readJson(value, reader, options)
+    readJson(value, reader, unknownFields)
     yield value
   reader.finish()
