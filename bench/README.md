@@ -24,6 +24,7 @@ instruction profiles from the same release build and fixed payload.
 - `floats_fallback` — exact float fallback conversion.
 - `raw_values` — `RawJson` capture through value skipping.
 - `write_strings` — direct escaping of plain and escaped strings.
+- `write_small` — repeated serialization of tiny scalar values.
 - `write_integers` — direct integer serialization into the writer buffer.
 - `write_objects` — object field names, values, and writer composition.
 - `write_raw` — trusted `RawJson` serialization.

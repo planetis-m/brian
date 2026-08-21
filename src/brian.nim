@@ -659,7 +659,7 @@ proc write*(w: var JsonWriter; value: string) {.inline.} =
   if value.len > 0:
     w.append(cast[ptr UncheckedArray[char]](cstring(value)), 0, value.len)
 
-proc put(w: var JsonWriter; c: char) {.inline.} =
+template put(w: var JsonWriter; c: char) =
   w.reserve(1)
   w.data[w.pos] = c
   inc w.pos
@@ -783,7 +783,7 @@ proc writeJson*[T](w: var JsonWriter;
     writeJson(w, item)
   w.put '}'
 
-proc writeObject[T](w: var JsonWriter; value: T) {.inline.} =
+template writeObject() =
   w.put '{'
   var comma = false
   mixin writeJson
@@ -826,7 +826,7 @@ proc finish(w: var JsonWriter): string =
   if w.data != nil:
     w.output.endStore()
     w.data = nil
-  result = w.output
+  result = move(w.output)
 
 proc canonicalizeValue(r: var JsonParser; w: var JsonWriter) =
   case r.kind
