@@ -43,23 +43,22 @@ type
   CanonRawJson* = distinct string
     ## A deterministic, whitespace-free re-emission of one JSON value.
 
-const DepthLimit = 1_000
-
-const Digits100 =
-  "000102030405060708091011121314151617181920212223242526272829" &
-  "303132333435363738394041424344454647484950515253545556575859" &
-  "606162636465666768697071727374757677787980818283848586878889" &
-  "90919293949596979899"
-
-const DecimalPowers: array[-22..22, float64] = [
-  1.0e-22, 1.0e-21, 1.0e-20, 1.0e-19, 1.0e-18, 1.0e-17, 1.0e-16,
-  1.0e-15, 1.0e-14, 1.0e-13, 1.0e-12, 1.0e-11, 1.0e-10, 1.0e-9,
-  1.0e-8, 1.0e-7, 1.0e-6, 1.0e-5, 1.0e-4, 1.0e-3, 1.0e-2, 1.0e-1,
-  1.0,
-  1.0e1, 1.0e2, 1.0e3, 1.0e4, 1.0e5, 1.0e6, 1.0e7, 1.0e8, 1.0e9,
-  1.0e10, 1.0e11, 1.0e12, 1.0e13, 1.0e14, 1.0e15, 1.0e16, 1.0e17,
-  1.0e18, 1.0e19, 1.0e20, 1.0e21, 1.0e22
-]
+const
+  DepthLimit = 1_000
+  Digits100 =
+    "000102030405060708091011121314151617181920212223242526272829" &
+    "303132333435363738394041424344454647484950515253545556575859" &
+    "606162636465666768697071727374757677787980818283848586878889" &
+    "90919293949596979899"
+  DecimalPowers: array[-22..22, float64] = [
+    1.0e-22, 1.0e-21, 1.0e-20, 1.0e-19, 1.0e-18, 1.0e-17, 1.0e-16,
+    1.0e-15, 1.0e-14, 1.0e-13, 1.0e-12, 1.0e-11, 1.0e-10, 1.0e-9,
+    1.0e-8, 1.0e-7, 1.0e-6, 1.0e-5, 1.0e-4, 1.0e-3, 1.0e-2, 1.0e-1,
+    1.0,
+    1.0e1, 1.0e2, 1.0e3, 1.0e4, 1.0e5, 1.0e6, 1.0e7, 1.0e8, 1.0e9,
+    1.0e10, 1.0e11, 1.0e12, 1.0e13, 1.0e14, 1.0e15, 1.0e16, 1.0e17,
+    1.0e18, 1.0e19, 1.0e20, 1.0e21, 1.0e22
+  ]
 
 proc raiseParseError*(p: JsonParser; message: string) {.noinline, noreturn.} =
   ## Raises a parse error suitable for custom `readJson` overloads.
@@ -230,15 +229,14 @@ proc readInt[T: SomeInteger](r: var JsonParser; dst: var T) =
     limit = uint64(high(T))
     if negative: inc limit
   var value = 0'u64
-  template addDigit() =
+  if r.data[r.pos] notin {'0'..'9'}:
+    r.raiseParseError("expected digit")
+  while r.pos < r.len and r.data[r.pos] in {'0'..'9'}:
     let digit = uint64(ord(r.data[r.pos]) - ord('0'))
     if value > (limit - digit) div 10'u64:
       r.raiseParseError("integer overflow")
     value = value * 10'u64 + digit
     inc r.pos
-  if r.data[r.pos] notin {'0'..'9'}:
-    r.raiseParseError("expected digit")
-  while r.pos < r.len and r.data[r.pos] in {'0'..'9'}: addDigit()
   if r.pos < r.len and r.data[r.pos] in {'.', 'e', 'E'}:
     r.raiseParseError("expected integer")
   when T is SomeUnsignedInt:
@@ -261,14 +259,14 @@ proc readFloat[T: SomeFloat](r: var JsonParser; dst: var T) =
   if r.pos < r.len and r.data[r.pos] == '-': inc r.pos
   if r.pos >= r.len: r.raiseParseError("incomplete number")
   var significand = 0'u64
-  var significantDigits = 0
+  var storedDigits = 0
   var fractionDigits = 0
   template addDigit() =
     let digit = uint64(ord(r.data[r.pos]) - ord('0'))
     if significand != 0 or digit != 0:
-      if significantDigits < 19:
+      if storedDigits < 19:
         significand = significand * 10'u64 + digit
-        inc significantDigits
+        inc storedDigits
     inc r.pos
   while r.pos < r.len and r.data[r.pos] in {'0'..'9'}: addDigit()
   if r.pos < r.len and r.data[r.pos] == '.':
@@ -295,6 +293,8 @@ proc readFloat[T: SomeFloat](r: var JsonParser; dst: var T) =
   var value: float64
   if significand == 0:
     value = if r.data[start] == '-': -0.0 else: 0.0
+  # Every stored 19-digit significand exceeds the exact-integer threshold and
+  # therefore takes the stdlib fallback below.
   elif significand < (1'u64 shl 53) and decimalExponent in -22..22:
     value = float64(significand)
     if decimalExponent < 0:
@@ -640,12 +640,12 @@ proc escapeJson*(w: var JsonWriter; value: string) =
         w.write escaped
       else:
         w.write "\\u00"
-        const Hex = "0123456789ABCDEF"
-        w.put Hex[(ord(c) shr 4) and 0xf]
+        const HexChars = "0123456789ABCDEF"
+        w.put HexChars[(ord(c) shr 4) and 0xf]
         if c == '\v':
           w.put 'b'
         else:
-          w.put Hex[ord(c) and 0xf]
+          w.put HexChars[ord(c) and 0xf]
       runStart = i + 1
   w.append(data, runStart, value.len - runStart)
   w.put '"'
@@ -816,16 +816,6 @@ proc readJson*(dst: var CanonRawJson; r: var JsonParser;
 proc writeJson*(w: var JsonWriter; value: CanonRawJson) =
   w.write string(value)
 
-proc fromJson*[T](input: string; typ: typedesc[T];
-                  unknownFields = ufSkip): T =
-  ## Decodes one complete JSON value from `input`.
-  var reader = JsonParser(
-    data: cast[ptr UncheckedArray[char]](cstring(input)), len: input.len
-  )
-  mixin readJson
-  readJson(result, reader, unknownFields)
-  reader.finish()
-
 proc fromJson*[T](input: string; dst: var T;
                   unknownFields = ufSkip) =
   ## Decodes one complete JSON value directly into `dst`.
@@ -835,6 +825,11 @@ proc fromJson*[T](input: string; dst: var T;
   mixin readJson
   readJson(dst, reader, unknownFields)
   reader.finish()
+
+proc fromJson*[T](input: string; typ: typedesc[T];
+                  unknownFields = ufSkip): T =
+  ## Decodes one complete JSON value from `input`.
+  fromJson(input, result, unknownFields)
 
 proc toJson*[T](value: T): string =
   ## Serializes `value` directly into its final string buffer.
