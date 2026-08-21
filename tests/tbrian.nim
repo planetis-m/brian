@@ -107,7 +107,7 @@ block raw_values:
   doAssert string(fromJson("-", RawJson)) == "-"
 
 block field_lifetime_and_unknown_policy:
-  var destination: Sample
+  var destination = Sample()
   doAssertRaises JsonParsingError:
     fromJson("{\"name\":\"x\",\"extra\":1}", destination, ufReject)
 
@@ -178,7 +178,7 @@ block floats:
   doAssert fromJson("-.", float64) == -0.0
   for input in ["0.1", "2.2250738585072012e-308", "1.0000000000000001",
                 "4.9406564584124654e-324", "1.7976931348623157e308"]:
-    var expected: float64
+    var expected = 0.0
     doAssert parseutils.parseFloat(input, expected) == input.len
     doAssert cast[uint64](fromJson(input, float64)) == cast[uint64](expected)
   doAssert classify(fromJson("1e400", float64)) == fcInf
@@ -191,7 +191,7 @@ block floats:
 block tuples_arrays_and_items:
   doAssert fromJson("[1,\"x\",true]", (int, string, bool)) == (1, "x", true)
   doAssert fromJson("[1,2,3]", array[3, int]) == [1, 2, 3]
-  var collected: seq[int]
+  var collected: seq[int] = @[]
   for value in jsonItems("[1,2,3]", int): collected.add value
   doAssert collected == @[1, 2, 3]
 
