@@ -790,14 +790,13 @@ template writeObject() =
   for name, field in fieldPairs(value):
     if comma: w.put ','
     else: comma = true
-    const prefix = "\"" & name & "\":"
-    w.write prefix
+    w.write "\"" & name & "\":"
     writeJson(w, field)
   w.put '}'
 
 proc writeJson*[T: tuple](w: var JsonWriter; value: T) =
   when isNamedTuple(T):
-    writeObject(w, value)
+    writeObject()
   else:
     w.put '['
     var comma = false
@@ -809,7 +808,7 @@ proc writeJson*[T: tuple](w: var JsonWriter; value: T) =
     w.put ']'
 
 proc writeJson*[T: object](w: var JsonWriter; value: T) =
-  writeObject(w, value)
+  writeObject()
 
 proc writeJson*[T: ref object](w: var JsonWriter; value: T) =
   if value.isNil:
