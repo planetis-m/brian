@@ -118,6 +118,13 @@ block integer_limits:
   doAssertRaises JsonParsingError:
     discard fromJson("-1", uint8)
 
+block integer_serialization_boundaries:
+  for value in [0'i64, 9, 10, 99, 100, 101, 9_999, 10_000, -1, -99, -100]:
+    doAssert fromJson(toJson(value), int64) == value
+  doAssert fromJson(toJson(low(int64)), int64) == low(int64)
+  doAssert fromJson(toJson(high(int64)), int64) == high(int64)
+  doAssert fromJson(toJson(high(uint64)), uint64) == high(uint64)
+
 block floats:
   doAssert fromJson("-12.5e-1", float64) == -1.25
   doAssert fromJson("1.25", float32) == 1.25'f32

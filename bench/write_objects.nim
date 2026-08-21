@@ -23,6 +23,6 @@ for index in 0..<values.len:
   )
 
 var checksum = 0
-for iteration in 0..<20:
+for iteration in 0..<200:
   checksum += toJson(values).len
 echo checksum

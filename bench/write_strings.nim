@@ -7,7 +7,7 @@ for index in 0..<plain.len:
   escaped[index] = "quoted \" value\nwith \\ slash"
 
 var checksum = 0
-for iteration in 0..<20:
+for iteration in 0..<200:
   checksum += toJson(plain).len
   checksum += toJson(escaped).len
 echo checksum

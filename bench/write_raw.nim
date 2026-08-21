@@ -5,6 +5,6 @@ for index in 0..<values.len:
   values[index] = RawJson("{\"name\":\"raw\",\"items\":[1,true,null]}")
 
 var checksum = 0
-for iteration in 0..<20:
+for iteration in 0..<1000:
   checksum += toJson(values).len
 echo checksum
