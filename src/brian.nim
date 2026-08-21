@@ -4,7 +4,7 @@
 ## tokenize scalar values before their destination type is known. Raw string
 ## bytes follow jsonx compatibility semantics; JSON `\\u` escapes are decoded.
 
-import std/[math, options, strutils]
+import std/[math, options, parseutils, strutils]
 
 type
   JsonParsingError* = object of ValueError
@@ -28,19 +28,12 @@ type
     start, length: int
     decoded: ptr string
 
-  ContainerKind = enum
-    ckArray, ckObject
-
-  ReadContainer = object
-    kind: ContainerKind
-    first: bool
-
   JsonReader* = object
     ## A value-type cursor over one contiguous JSON input buffer.
     input: string
     pos: int
     maxDepth: int
-    containers: seq[ReadContainer]
+    firsts: seq[bool]
     fieldScratch: string
 
   WriteContainerKind = enum
@@ -58,7 +51,7 @@ type
     wroteRoot: bool
 
   RawJson* = distinct string
-    ## The original representation of one validated JSON value.
+    ## Trusted bytes representing one JSON value.
 
   CanonRawJson* = distinct string
     ## A deterministic, whitespace-free re-emission of one JSON value.
@@ -100,15 +93,13 @@ proc skipSpace(r: var JsonReader) {.inline.} =
   while r.pos < r.input.len and r.input[r.pos] in {' ', '\t', '\n', '\r'}:
     inc r.pos
 
-proc push(r: var JsonReader; kind: ContainerKind) {.inline.} =
-  if r.containers.len >= r.maxDepth:
+proc push(r: var JsonReader) {.inline.} =
+  if r.firsts.len >= r.maxDepth:
     fail(r.pos, "maximum nesting depth exceeded")
-  r.containers.add ReadContainer(kind: kind, first: true)
+  r.firsts.add true
 
-proc pop(r: var JsonReader; kind: ContainerKind) {.inline.} =
-  if r.containers.len == 0 or r.containers[^1].kind != kind:
-    fail(r.pos, "mismatched JSON container")
-  r.containers.setLen(r.containers.len - 1)
+proc pop(r: var JsonReader) {.inline.} =
+  r.firsts.setLen(r.firsts.len - 1)
 
 proc hexValue(c: char): int {.inline.} =
   case c
@@ -116,49 +107,6 @@ proc hexValue(c: char): int {.inline.} =
   of 'a'..'f': ord(c) - ord('a') + 10
   of 'A'..'F': ord(c) - ord('A') + 10
   else: -1
-
-proc validUtf8Span(s: string; start, stop: int): bool =
-  var i = start
-  while i < stop:
-    let b0 = ord(s[i])
-    if b0 < 0x20:
-      return false
-    elif b0 < 0x80:
-      inc i
-    elif b0 in 0xc2..0xdf and i + 1 < stop:
-      if ord(s[i + 1]) notin 0x80..0xbf: return false
-      i += 2
-    elif b0 == 0xe0 and i + 2 < stop:
-      if ord(s[i + 1]) notin 0xa0..0xbf or ord(s[i + 2]) notin 0x80..0xbf:
-        return false
-      i += 3
-    elif b0 in 0xe1..0xec or b0 in 0xee..0xef:
-      if i + 2 >= stop or ord(s[i + 1]) notin 0x80..0xbf or
-          ord(s[i + 2]) notin 0x80..0xbf:
-        return false
-      i += 3
-    elif b0 == 0xed and i + 2 < stop:
-      if ord(s[i + 1]) notin 0x80..0x9f or ord(s[i + 2]) notin 0x80..0xbf:
-        return false
-      i += 3
-    elif b0 == 0xf0 and i + 3 < stop:
-      if ord(s[i + 1]) notin 0x90..0xbf or ord(s[i + 2]) notin 0x80..0xbf or
-          ord(s[i + 3]) notin 0x80..0xbf:
-        return false
-      i += 4
-    elif b0 in 0xf1..0xf3 and i + 3 < stop:
-      if ord(s[i + 1]) notin 0x80..0xbf or ord(s[i + 2]) notin 0x80..0xbf or
-          ord(s[i + 3]) notin 0x80..0xbf:
-        return false
-      i += 4
-    elif b0 == 0xf4 and i + 3 < stop:
-      if ord(s[i + 1]) notin 0x80..0x8f or ord(s[i + 2]) notin 0x80..0xbf or
-          ord(s[i + 3]) notin 0x80..0xbf:
-        return false
-      i += 4
-    else:
-      return false
-  true
 
 proc appendCodePoint(dst: var string; codePoint: int; pos: int) =
   if codePoint < 0 or codePoint > 0x10ffff or codePoint in 0xd800..0xdfff:
@@ -187,6 +135,13 @@ proc readHexEscape(r: var JsonReader): int =
     result = (result shl 4) or v
     inc r.pos
 
+proc addSpan(dst: var string; source: string; start, stop: int) {.inline.} =
+  let length = stop - start
+  if length > 0:
+    let oldLength = dst.len
+    dst.setLen(oldLength + length)
+    copyMem(addr dst[oldLength], unsafeAddr source[start], length)
+
 proc parseString(r: var JsonReader; dst: var string; rawStart: var int;
                  rawLength: var int; hadEscape: var bool) =
   r.skipSpace()
@@ -206,13 +161,13 @@ proc parseString(r: var JsonReader; dst: var string; rawStart: var int;
       let stringEnd = r.pos
       inc r.pos
       if hadEscape:
-        dst.add r.input[runStart..<stringEnd]
+        dst.addSpan(r.input, runStart, stringEnd)
       return
     of '\\':
       if not hadEscape:
         hadEscape = true
         dst.setLen(0)
-      dst.add r.input[runStart..<r.pos]
+      dst.addSpan(r.input, runStart, r.pos)
       inc r.pos
       if r.pos >= r.input.len: fail(r.pos, "incomplete escape")
       let escaped = r.input[r.pos]
@@ -269,18 +224,26 @@ proc readString*(r: var JsonReader; dst: var string) =
   else:
     copyStringSpan(dst, r.input, start, length)
 
-proc readNull*(r: var JsonReader) =
+proc consumeNull(r: var JsonReader): bool {.inline.} =
   r.skipSpace()
-  if r.input.len - r.pos < 4 or r.input[r.pos..<r.pos + 4] != "null":
-    fail(r.pos, "expected null")
+  if r.input.len - r.pos < 4 or r.input[r.pos] != 'n' or r.input[r.pos + 1] != 'u' or
+      r.input[r.pos + 2] != 'l' or r.input[r.pos + 3] != 'l':
+    return false
   r.pos += 4
+  true
+
+proc readNull*(r: var JsonReader) =
+  if not r.consumeNull():
+    fail(r.pos, "expected null")
 
 proc readBool*(r: var JsonReader; dst: var bool) =
   r.skipSpace()
-  if r.input.len - r.pos >= 4 and r.input[r.pos..<r.pos + 4] == "true":
+  if r.input.len - r.pos >= 4 and r.input[r.pos] == 't' and r.input[r.pos + 1] == 'r' and
+      r.input[r.pos + 2] == 'u' and r.input[r.pos + 3] == 'e':
     dst = true
     r.pos += 4
-  elif r.input.len - r.pos >= 5 and r.input[r.pos..<r.pos + 5] == "false":
+  elif r.input.len - r.pos >= 5 and r.input[r.pos] == 'f' and r.input[r.pos + 1] == 'a' and
+      r.input[r.pos + 2] == 'l' and r.input[r.pos + 3] == 's' and r.input[r.pos + 4] == 'e':
     dst = false
     r.pos += 5
   else:
@@ -344,18 +307,23 @@ proc readInt*[T: SomeInteger](r: var JsonReader; dst: var T) =
       dst = T(value)
 
 proc readFloat*[T: SomeFloat](r: var JsonReader; dst: var T) =
-  ## Parses JSON number grammar and accumulates its decimal value in one pass.
+  ## Uses a small exact fast path and the stdlib converter for difficult values.
   r.skipSpace()
   let start = r.pos
-  var negative = false
-  if r.pos < r.input.len and r.input[r.pos] == '-':
-    negative = true
-    inc r.pos
+  if r.pos < r.input.len and r.input[r.pos] == '-': inc r.pos
   if r.pos >= r.input.len: fail(r.pos, "incomplete number")
-  var mantissa = 0.0
+  var significand = 0'u64
+  var significantDigits = 0
+  var fast = true
   var fractionDigits = 0
   template addDigit() =
-    mantissa = mantissa * 10.0 + float64(ord(r.input[r.pos]) - ord('0'))
+    let digit = uint64(ord(r.input[r.pos]) - ord('0'))
+    if significand != 0 or digit != 0:
+      if significantDigits < 19:
+        significand = significand * 10'u64 + digit
+        inc significantDigits
+      else:
+        fast = false
     inc r.pos
   while r.pos < r.input.len and r.input[r.pos] in {'0'..'9'}: addDigit()
   if r.pos < r.input.len and r.input[r.pos] == '.':
@@ -379,14 +347,22 @@ proc readFloat*[T: SomeFloat](r: var JsonReader; dst: var T) =
     if r.pos == exponentStart: fail(r.pos, "missing exponent digits")
     if exponentNegative: exponent = -exponent
   let decimalExponent = exponent - fractionDigits
-  let scale = if decimalExponent in -22..22:
-    DecimalPowers[decimalExponent]
+  var value: float64
+  if significand == 0:
+    value = if r.input[start] == '-': -0.0 else: 0.0
+  elif fast and significand < (1'u64 shl 53) and decimalExponent in -22..22:
+    value = float64(significand)
+    if decimalExponent < 0:
+      value /= DecimalPowers[-decimalExponent]
+    else:
+      value *= DecimalPowers[decimalExponent]
+    if r.input[start] == '-': value = -value
   else:
-    pow(10.0, float64(decimalExponent))
-  let value = mantissa * scale
+    let consumed = parseutils.parseFloat(r.input, value, start)
+    if consumed != r.pos - start: fail(start, "invalid number")
   if classify(value) in {fcInf, fcNegInf, fcNan}:
     fail(start, "floating-point value out of range")
-  dst = T(if negative: -value else: value)
+  dst = T(value)
   if classify(float64(dst)) in {fcInf, fcNegInf, fcNan}:
     fail(start, "floating-point value out of range")
 
@@ -394,23 +370,22 @@ proc beginObject*(r: var JsonReader) =
   r.skipSpace()
   if r.pos >= r.input.len or r.input[r.pos] != '{': fail(r.pos, "expected object")
   inc r.pos
-  r.push(ckObject)
+  r.push()
 
 proc nextField*(r: var JsonReader; field: var JsonField): bool =
-  if r.containers.len == 0 or r.containers[^1].kind != ckObject:
-    fail(r.pos, "not inside an object")
+  assert r.firsts.len > 0
   r.skipSpace()
-  if r.containers[^1].first:
+  if r.firsts[^1]:
     if r.pos < r.input.len and r.input[r.pos] == '}':
       inc r.pos
-      r.pop(ckObject)
+      r.pop()
       return false
-    r.containers[^1].first = false
+    r.firsts[^1] = false
   else:
     if r.pos >= r.input.len: fail(r.pos, "unterminated object")
     if r.input[r.pos] == '}':
       inc r.pos
-      r.pop(ckObject)
+      r.pop()
       return false
     if r.input[r.pos] != ',': fail(r.pos, "expected comma or end of object")
     inc r.pos
@@ -437,23 +412,22 @@ proc beginArray*(r: var JsonReader) =
   r.skipSpace()
   if r.pos >= r.input.len or r.input[r.pos] != '[': fail(r.pos, "expected array")
   inc r.pos
-  r.push(ckArray)
+  r.push()
 
 proc nextElement*(r: var JsonReader): bool =
-  if r.containers.len == 0 or r.containers[^1].kind != ckArray:
-    fail(r.pos, "not inside an array")
+  assert r.firsts.len > 0
   r.skipSpace()
-  if r.containers[^1].first:
+  if r.firsts[^1]:
     if r.pos < r.input.len and r.input[r.pos] == ']':
       inc r.pos
-      r.pop(ckArray)
+      r.pop()
       return false
-    r.containers[^1].first = false
+    r.firsts[^1] = false
   else:
     if r.pos >= r.input.len: fail(r.pos, "unterminated array")
     if r.input[r.pos] == ']':
       inc r.pos
-      r.pop(ckArray)
+      r.pop()
       return false
     if r.input[r.pos] != ',': fail(r.pos, "expected comma or end of array")
     inc r.pos
@@ -470,7 +444,7 @@ proc toString*(field: JsonField): string =
   else:
     result = field.decoded[]
 
-proc `==`*(field: JsonField; value: string): bool =
+proc `==`*(field: JsonField; value: string): bool {.inline.} =
   if field.decoded != nil:
     field.decoded[] == value
   elif field.length != value.len:
@@ -519,25 +493,30 @@ proc skipString(r: var JsonReader) =
 
 proc skipValue*(r: var JsonReader) =
   ## Validates and discards exactly one value without materializing a DOM.
-  case r.kind
-  of jkNull: r.readNull()
-  of jkBool:
+  r.skipSpace()
+  if r.pos >= r.input.len:
+    fail(r.pos, "expected value")
+  case r.input[r.pos]
+  of 'n': r.readNull()
+  of 't', 'f':
     var value: bool
     r.readBool(value)
-  of jkString: r.skipString()
-  of jkNumber:
+  of '"': r.skipString()
+  of '-', '.', '0'..'9':
     var start: int
     r.scanNumber(start, false)
-  of jkArray:
+  of '[':
     r.beginArray()
     while r.nextElement(): r.skipValue()
-  of jkObject:
+  of '{':
     r.beginObject()
     var field: JsonField
     while r.nextField(field): r.skipValue()
+  else:
+    fail(r.pos, "expected value")
 
 proc finish(r: var JsonReader) =
-  if r.containers.len != 0: fail(r.pos, "unterminated container")
+  if r.firsts.len != 0: fail(r.pos, "unterminated container")
   r.skipSpace()
   if r.pos != r.input.len: fail(r.pos, "trailing data")
 
@@ -566,8 +545,7 @@ proc readJson*[T: enum](dst: var T; r: var JsonReader; options: JsonReadOptions)
     r.raiseExpected("a valid " & $T)
 
 proc readJson*[T](dst: var Option[T]; r: var JsonReader; options: JsonReadOptions) =
-  if r.kind == jkNull:
-    r.readNull()
+  if r.consumeNull():
     dst = none(T)
   else:
     var value: T
@@ -617,8 +595,7 @@ proc readJson*[T: object](dst: var T; r: var JsonReader; options: JsonReadOption
       r.skipValue()
 
 proc readJson*[T: ref object](dst: var T; r: var JsonReader; options: JsonReadOptions) =
-  if r.kind == jkNull:
-    r.readNull()
+  if r.consumeNull():
     dst = nil
   else:
     new dst
@@ -630,7 +607,9 @@ proc readJson*(dst: var RawJson; r: var JsonReader; options: JsonReadOptions) =
   r.skipSpace()
   let start = r.pos
   r.skipValue()
-  dst = RawJson(r.input[start..<r.pos])
+  var value: string
+  copyStringSpan(value, r.input, start, r.pos - start)
+  dst = RawJson(value)
 
 {.pop.}
 
@@ -671,8 +650,6 @@ proc endArray*(w: var JsonWriter) =
   w.containers.setLen(w.containers.len - 1)
 
 proc writeEscapedString(w: var JsonWriter; value: string) =
-  if not validUtf8Span(value, 0, value.len):
-    raise newException(ValueError, "JSON strings must be valid UTF-8")
   w.output.add '"'
   var runStart = 0
   for i, c in value:
@@ -686,7 +663,7 @@ proc writeEscapedString(w: var JsonWriter; value: string) =
       of '\t': "\\t"
       else: ""
     if escaped.len > 0 or ord(c) < 0x20:
-      w.output.add value[runStart..<i]
+      addSpan(w.output, value, runStart, i)
       if escaped.len > 0:
         w.output.add escaped
       else:
@@ -695,7 +672,7 @@ proc writeEscapedString(w: var JsonWriter; value: string) =
         w.output.add Hex[(ord(c) shr 4) and 0xf]
         w.output.add Hex[ord(c) and 0xf]
       runStart = i + 1
-  w.output.add value[runStart..^1]
+  addSpan(w.output, value, runStart, value.len)
   w.output.add '"'
 
 proc writeField*(w: var JsonWriter; name: string) =
@@ -771,16 +748,9 @@ proc writeJson*[T: ref object](w: var JsonWriter; value: T) =
     mixin writeJson
     writeJson(w, value[])
 
-proc validRaw(value: string) =
-  var reader = initJsonReader(value)
-  reader.skipValue()
-  reader.finish()
-
 proc writeJson*(w: var JsonWriter; value: RawJson) =
-  let raw = string(value)
-  validRaw(raw)
   w.beforeValue()
-  w.output.add raw
+  w.output.add string(value)
 
 proc canonicalizeValue(r: var JsonReader; w: var JsonWriter) =
   case r.kind
@@ -800,7 +770,7 @@ proc canonicalizeValue(r: var JsonReader; w: var JsonWriter) =
     var start: int
     r.scanNumber(start, false)
     w.beforeValue()
-    w.output.add r.input[start..<r.pos]
+    addSpan(w.output, r.input, start, r.pos)
   of jkArray:
     r.beginArray()
     w.beginArray()

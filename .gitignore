@@ -1,0 +1,20 @@
+# Nim compiler caches and platform-specific executables.
+nimcache/
+*.exe
+
+# Local test executables.
+/tests/tester
+/tests/tbrian
+
+# Focused Cachegrind benchmark executables.
+/bench/strings_plain
+/bench/strings_escaped
+/bench/objects_known
+/bench/unknown_skip
+/bench/integers
+/bench/floats_fast
+/bench/floats_fallback
+/bench/raw_values
+/bench/write_strings
+/bench/write_objects
+/bench/write_raw

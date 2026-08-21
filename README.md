@@ -26,7 +26,19 @@ proc readJson(dst: var Content; r: var JsonReader; options: JsonReadOptions) =
 ```
 
 The initial package provides in-memory parsing/serialization, jsonx-compatible
-raw-string handling with surrogate validation, typed scalars, sequences, arrays, tuples, objects,
-`Option`, `RawJson`, unknown-field policies, and depth limits. Buffered input
-and output are intentionally deferred to a subsequent layer so the contiguous
-reader/writer hot path remains simple.
+raw-string handling with surrogate validation, typed scalars, sequences,
+arrays, tuples, objects, `Option`, `RawJson`, unknown-field policies, and depth
+limits. Buffered input and output are intentionally deferred to a subsequent
+layer so the contiguous reader/writer hot path remains simple.
+
+## String bytes
+
+`toJson` follows jsonx-compatible raw-byte behavior for Nim strings: it escapes
+JSON control bytes, `"`, and `\\`, and otherwise preserves the input bytes. It
+does not perform a separate UTF-8 validation pass during serialization.
+
+## Raw JSON
+
+`RawJson` is trusted during serialization, matching jsonx. Values obtained via
+`fromJson(..., RawJson)` are validated while captured; manually constructed
+`RawJson` values must already contain one valid JSON value.

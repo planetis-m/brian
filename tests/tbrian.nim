@@ -1,0 +1,128 @@
+import std/[assertions, options, parseutils]
+import brian
+
+type
+  Colour = enum
+    red, blue
+  Child = object
+    value: int
+  Sample = object
+    name: string
+    count: int64
+    enabled: bool
+    colour: Colour
+    child: Option[Child]
+    values: seq[int]
+  ContentKind = enum
+    text, parts
+  Content = object
+    case kind: ContentKind
+    of text: body: string
+    of parts: items: seq[string]
+
+proc readJson*(dst: var Content; r: var JsonReader; options: JsonReadOptions) =
+  case r.kind
+  of jkString:
+    dst = Content(kind: text)
+    readJson(dst.body, r, options)
+  of jkArray:
+    dst = Content(kind: parts)
+    readJson(dst.items, r, options)
+  else:
+    r.raiseExpected("string or array")
+
+proc writeJson*(w: var JsonWriter; value: Content) =
+  case value.kind
+  of text: writeJson(w, value.body)
+  of parts: writeJson(w, value.items)
+
+block object_round_trip:
+  let source = """{
+    "name":"\u0391\u03b8\u03ae\u03bd\u03b1",
+    "count":-42,
+    "enabled":true,
+    "colour":"blue",
+    "child":{"value":7},
+    "values":[1,2,3],
+    "unknown":{"deep":[false,null,"ignored"]}
+  }"""
+  let value = fromJson(source, Sample)
+  doAssert value.name == "Αθήνα"
+  doAssert value.count == -42
+  doAssert value.colour == blue
+  doAssert value.child.get.value == 7
+  doAssert value.values == @[1, 2, 3]
+  doAssert fromJson(toJson(value), Sample) == value
+
+block custom_union:
+  let textContent = fromJson("\"hello\"", Content)
+  doAssert textContent.kind == text
+  doAssert textContent.body == "hello"
+  let partContent = fromJson("[\"a\",\"b\"]", Content)
+  doAssert partContent.kind == parts
+  doAssert partContent.items == @["a", "b"]
+  doAssert toJson(Content(kind: parts, items: @["a", "b"])) == "[\"a\",\"b\"]"
+
+block raw_values:
+  let raw = fromJson(" { \"x\" : [ 1, \"\\u03b1\" ] } ", RawJson)
+  doAssert string(raw) == "{ \"x\" : [ 1, \"\\u03b1\" ] }"
+  doAssert toJson(raw) == string(raw)
+  doAssert toJson(RawJson("not validated here")) == "not validated here"
+  let canonical = fromJson(" { \"x\" : [ 1, \"\\u03b1\" ] } ", CanonRawJson)
+  doAssert string(canonical) == "{\"x\":[1,\"α\"]}"
+
+block field_lifetime_and_unknown_policy:
+  var destination: Sample
+  doAssertRaises JsonParsingError:
+    fromJson("{\"name\":\"x\",\"extra\":1}", destination,
+      JsonReadOptions(unknownFields: ufReject, maxDepth: 256))
+
+block malformed_input:
+  for input in ["1e", "+1", "[1,]", "{\"x\":1,}",
+                "true false", "\"\\ud800\"", "\"\\udc00\"", "\"\\u12xz\""]:
+    doAssertRaises JsonParsingError:
+      discard fromJson(input, RawJson)
+
+block depth_limit:
+  let options = JsonReadOptions(unknownFields: ufSkip, maxDepth: 2)
+  doAssertRaises JsonParsingError:
+    discard fromJson("[[[]]]", RawJson, options)
+
+block integer_limits:
+  doAssert fromJson("-128", int8) == -128'i8
+  doAssert fromJson("255", uint8) == 255'u8
+  for input in ["128", "-129"]:
+    doAssertRaises JsonParsingError:
+      discard fromJson(input, int8)
+  doAssertRaises JsonParsingError:
+    discard fromJson("-1", uint8)
+
+block floats:
+  doAssert fromJson("-12.5e-1", float64) == -1.25
+  doAssert fromJson("1.25", float32) == 1.25'f32
+  doAssert fromJson(".1", float64) == 0.1
+  doAssert fromJson("01", float64) == 1.0
+  doAssert fromJson("1.", float64) == 1.0
+  doAssert fromJson(".", float64) == 0.0
+  doAssert fromJson("-.", float64) == -0.0
+  for input in ["0.1", "2.2250738585072012e-308", "1.0000000000000001",
+                "4.9406564584124654e-324", "1.7976931348623157e308"]:
+    var expected: float64
+    doAssert parseutils.parseFloat(input, expected) == input.len
+    doAssert cast[uint64](fromJson(input, float64)) == cast[uint64](expected)
+  doAssertRaises JsonParsingError:
+    discard fromJson("1e400", float64)
+
+block tuples_arrays_and_items:
+  doAssert fromJson("[1,\"x\",true]", (int, string, bool)) == (1, "x", true)
+  doAssert fromJson("[1,2,3]", array[3, int]) == [1, 2, 3]
+  var collected: seq[int]
+  for value in jsonItems("[1,2,3]", int): collected.add value
+  doAssert collected == @[1, 2, 3]
+
+block raw_string_compatibility:
+  doAssert fromJson("\"\\x\"", string) == "x"
+
+block string_serialization:
+  doAssert toJson("line\nbreak") == "\"line\\nbreak\""
+  doAssert toJson("\xff") == "\"\xff\""
