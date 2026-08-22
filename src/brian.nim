@@ -651,12 +651,11 @@ template put(w: var JsonWriter; c: char) =
   w.data[w.pos] = c
   inc w.pos
 
-proc escapeJson*(w: var JsonWriter; value: string) =
-  ## Writes one JSON string, including quotes and required escapes.
+proc escapeJson(w: var JsonWriter; data: ptr UncheckedArray[char]; len: int) =
   w.put '"'
-  let data = readRawData(value)
   var runStart = 0
-  for i, c in value:
+  for i in 0..<len:
+    let c = data[i]
     let escaped = case c
       of '"': "\\\""
       of '\\': "\\\\"
@@ -679,8 +678,15 @@ proc escapeJson*(w: var JsonWriter; value: string) =
         else:
           w.put HexChars[ord(c) and 0xf]
       runStart = i + 1
-  w.append(data, runStart, value.len - runStart)
+  w.append(data, runStart, len - runStart)
   w.put '"'
+
+proc escapeJson*(w: var JsonWriter; value: string) =
+  ## Writes one JSON string, including quotes and required escapes.
+  w.escapeJson(readRawData(value), value.len)
+
+proc escapeJson(w: var JsonWriter; f: FieldName) {.inline.} =
+  w.escapeJson(f.data, f.len)
 
 proc writeJson*(w: var JsonWriter; value: string) =
   w.escapeJson(value)
@@ -849,7 +855,7 @@ proc canonicalizeValue(p: var JsonParser; w: var JsonWriter) =
     while p.nextField(first, f):
       if comma: w.put ','
       else: comma = true
-      w.escapeJson(f.toString())
+      w.escapeJson(f)
       w.put ':'
       p.canonicalizeValue(w)
     w.put '}'

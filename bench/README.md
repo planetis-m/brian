@@ -23,6 +23,7 @@ instruction profiles from the same release build and fixed payload.
 - `floats_fast` — exact scalar float fast path.
 - `floats_fallback` — exact float fallback conversion.
 - `raw_values` — `RawJson` capture through value skipping.
+- `canonical_fields` — canonical re-emission of ordinary and escaped object fields.
 - `write_strings` — direct escaping of plain and escaped strings.
 - `write_small` — repeated serialization of tiny scalar values.
 - `write_integers` — direct integer serialization into the writer buffer.
