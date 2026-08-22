@@ -365,7 +365,7 @@ proc nextField(p: var JsonParser; first: var bool; f: var FieldName): bool =
       var escaped = false
       p.parseString(p.scratch, rawStart, rawLength, escaped)
       f = FieldName(
-        data: cast[ptr UncheckedArray[char]](cstring(p.scratch)),
+        data: readRawData(p.scratch),
         len: p.scratch.len
       )
     p.skip()
@@ -408,7 +408,7 @@ proc toString(f: FieldName): string =
     endStore(result)
 
 proc `==`(f: FieldName; value: string): bool {.inline.} =
-  result = f.len == value.len and cmpMem(f.data, cstring(value), f.len) == 0
+  result = f.len == value.len and cmpMem(f.data, readRawData(value), f.len) == 0
 
 proc skipUnicodeEscape(p: var JsonParser) {.noinline.} =
   let high = p.readHex()
@@ -644,7 +644,7 @@ proc append(w: var JsonWriter; src: ptr UncheckedArray[char]; start, len: int) {
 proc write*(w: var JsonWriter; value: string) {.inline.} =
   ## Appends raw JSON syntax from a custom serializer.
   if value.len > 0:
-    w.append(cast[ptr UncheckedArray[char]](cstring(value)), 0, value.len)
+    w.append(readRawData(value), 0, value.len)
 
 template put(w: var JsonWriter; c: char) =
   w.reserve(1)
@@ -654,7 +654,7 @@ template put(w: var JsonWriter; c: char) =
 proc escapeJson*(w: var JsonWriter; value: string) =
   ## Writes one JSON string, including quotes and required escapes.
   w.put '"'
-  let data = cast[ptr UncheckedArray[char]](cstring(value))
+  let data = readRawData(value)
   var runStart = 0
   for i, c in value:
     let escaped = case c
@@ -867,7 +867,7 @@ proc fromJson*[T](input: string; dst: var T;
                   unknownFields = ufSkip) =
   ## Decodes one complete JSON value directly into `dst`.
   var reader = JsonParser(
-    data: cast[ptr UncheckedArray[char]](cstring(input)), len: input.len
+    data: readRawData(input), len: input.len
   )
   mixin readJson
   readJson(dst, reader, unknownFields)
@@ -889,7 +889,7 @@ iterator jsonItems*[T](input: string; typ: typedesc[T];
                        unknownFields = ufSkip): T =
   ## Decodes the elements of one top-level JSON array lazily.
   var reader = JsonParser(
-    data: cast[ptr UncheckedArray[char]](cstring(input)), len: input.len
+    data: readRawData(input), len: input.len
   )
   reader.beginArray()
   var first = true
