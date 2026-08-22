@@ -67,13 +67,13 @@ const
     1.0e18, 1.0e19, 1.0e20, 1.0e21, 1.0e22
   ]
 
-proc raiseParseError*(p: JsonParser; message: string) {.noinline, noreturn.} =
+proc raiseParseError*(p: JsonParser; msg: string) {.noinline, noreturn.} =
   ## Raises a parse error suitable for custom `readJson` overloads.
-  raise newException(JsonParsingError, "JSON at byte " & $p.pos & ": " & message)
+  raise newException(JsonParsingError, "JSON at byte " & $p.pos & ": " & msg)
 
-proc skip(r: var JsonParser) {.inline.} =
-  while r.pos < r.len and r.data[r.pos] in {' ', '\t', '\n', '\r'}:
-    inc r.pos
+proc skip(p: var JsonParser) {.inline.} =
+  while p.pos < p.len and p.data[p.pos] in {' ', '\t', '\n', '\r'}:
+    inc p.pos
 
 proc hexValue(c: char): int {.inline.} =
   case c
@@ -98,54 +98,54 @@ proc addCodePoint(dst: var string; codePoint: int) =
     dst.add char(0x80 or ((codePoint shr 6) and 0x3f))
     dst.add char(0x80 or (codePoint and 0x3f))
 
-proc readHex(r: var JsonParser): int =
-  if r.pos + 4 > r.len:
-    r.raiseParseError("incomplete Unicode escape")
+proc readHex(p: var JsonParser): int =
+  if p.pos + 4 > p.len:
+    p.raiseParseError("incomplete Unicode escape")
   for _ in 0..<4:
-    let v = hexValue(r.data[r.pos])
-    if v < 0: r.raiseParseError("invalid Unicode escape")
+    let v = hexValue(p.data[p.pos])
+    if v < 0: p.raiseParseError("invalid Unicode escape")
     result = (result shl 4) or v
-    inc r.pos
+    inc p.pos
 
-proc addSpan(dst: var string; source: ptr UncheckedArray[char]; start, stop: int) {.inline.} =
+proc addSpan(dst: var string; src: ptr UncheckedArray[char]; start, stop: int) {.inline.} =
   let length = stop - start
   if length > 0:
     let oldLength = dst.len
     {.cast(noSideEffect).}:
-      copyMem(beginStore(dst, oldLength + length, oldLength), addr source[start], length)
+      copyMem(beginStore(dst, oldLength + length, oldLength), addr src[start], length)
       if oldLength < 8:
         endStore(dst)
 
-proc parseString(r: var JsonParser; dst: var string; rawStart: var int;
+proc parseString(p: var JsonParser; dst: var string; rawStart: var int;
                  rawLength: var int; hadEscape: var bool) =
-  r.skip()
-  if r.pos >= r.len or r.data[r.pos] != '"':
-    r.raiseParseError("expected string")
-  inc r.pos
-  rawStart = r.pos
-  var runStart = r.pos
-  while r.pos < r.len:
-    while r.pos < r.len and r.data[r.pos] notin {'"', '\\'}:
-      inc r.pos
-    if r.pos >= r.len:
+  p.skip()
+  if p.pos >= p.len or p.data[p.pos] != '"':
+    p.raiseParseError("expected string")
+  inc p.pos
+  rawStart = p.pos
+  var runStart = p.pos
+  while p.pos < p.len:
+    while p.pos < p.len and p.data[p.pos] notin {'"', '\\'}:
+      inc p.pos
+    if p.pos >= p.len:
       break
-    case r.data[r.pos]
+    case p.data[p.pos]
     of '"':
-      rawLength = r.pos - rawStart
-      let stringEnd = r.pos
-      inc r.pos
+      rawLength = p.pos - rawStart
+      let stringEnd = p.pos
+      inc p.pos
       if hadEscape:
-        dst.addSpan(r.data, runStart, stringEnd)
+        dst.addSpan(p.data, runStart, stringEnd)
       return
     of '\\':
       if not hadEscape:
         hadEscape = true
         dst.setLen(0)
-      dst.addSpan(r.data, runStart, r.pos)
-      inc r.pos
-      if r.pos >= r.len: r.raiseParseError("incomplete escape")
-      let escaped = r.data[r.pos]
-      inc r.pos
+      dst.addSpan(p.data, runStart, p.pos)
+      inc p.pos
+      if p.pos >= p.len: p.raiseParseError("incomplete escape")
+      let escaped = p.data[p.pos]
+      inc p.pos
       case escaped
       of '"', '\\', '/', '\'': dst.add escaped
       of 'b': dst.add '\b'
@@ -155,101 +155,101 @@ proc parseString(r: var JsonParser; dst: var string; rawStart: var int;
       of 't': dst.add '\t'
       of 'v': dst.add '\v'
       of 'u':
-        var codePoint = r.readHex()
+        var codePoint = p.readHex()
         if codePoint in 0xd800..0xdbff:
-          if r.pos + 2 > r.len or r.data[r.pos] != '\\' or r.data[r.pos + 1] != 'u':
-            r.raiseParseError("high surrogate without low surrogate")
-          r.pos += 2
-          let low = r.readHex()
-          if low notin 0xdc00..0xdfff: r.raiseParseError("invalid low surrogate")
+          if p.pos + 2 > p.len or p.data[p.pos] != '\\' or p.data[p.pos + 1] != 'u':
+            p.raiseParseError("high surrogate without low surrogate")
+          p.pos += 2
+          let low = p.readHex()
+          if low notin 0xdc00..0xdfff: p.raiseParseError("invalid low surrogate")
           codePoint = 0x10000 + ((codePoint - 0xd800) shl 10) + (low - 0xdc00)
         dst.addCodePoint(codePoint)
       else:
         dst.add '\\'
         dst.add escaped
-      runStart = r.pos
+      runStart = p.pos
     else:
       discard
-  r.raiseParseError("unterminated string")
+  p.raiseParseError("unterminated string")
 
-proc readString(r: var JsonParser; dst: var string) =
+proc readString(p: var JsonParser; dst: var string) =
   var start = 0
   var length = 0
   var escaped = false
   var decoded = ""
-  r.parseString(decoded, start, length, escaped)
+  p.parseString(decoded, start, length, escaped)
   if escaped:
     dst = decoded
   else:
     dst.setLen(0)
-    dst.addSpan(r.data, start, start + length)
+    dst.addSpan(p.data, start, start + length)
 
-proc consumeNull(r: var JsonParser): bool {.inline.} =
-  r.skip()
-  result = r.len - r.pos >= 4 and r.data[r.pos] == 'n' and
-    r.data[r.pos + 1] == 'u' and r.data[r.pos + 2] == 'l' and
-    r.data[r.pos + 3] == 'l'
+proc consumeNull(p: var JsonParser): bool {.inline.} =
+  p.skip()
+  result = p.len - p.pos >= 4 and p.data[p.pos] == 'n' and
+    p.data[p.pos + 1] == 'u' and p.data[p.pos + 2] == 'l' and
+    p.data[p.pos + 3] == 'l'
   if result:
-    r.pos += 4
+    p.pos += 4
 
-proc readNull(r: var JsonParser) =
-  if not r.consumeNull():
-    r.raiseParseError("expected null")
+proc readNull(p: var JsonParser) =
+  if not p.consumeNull():
+    p.raiseParseError("expected null")
 
-proc readBool(r: var JsonParser; dst: var bool) =
-  r.skip()
-  if r.len - r.pos >= 4 and r.data[r.pos] == 't' and r.data[r.pos + 1] == 'r' and
-      r.data[r.pos + 2] == 'u' and r.data[r.pos + 3] == 'e':
+proc readBool(p: var JsonParser; dst: var bool) =
+  p.skip()
+  if p.len - p.pos >= 4 and p.data[p.pos] == 't' and p.data[p.pos + 1] == 'r' and
+      p.data[p.pos + 2] == 'u' and p.data[p.pos + 3] == 'e':
     dst = true
-    r.pos += 4
-  elif r.len - r.pos >= 5 and r.data[r.pos] == 'f' and r.data[r.pos + 1] == 'a' and
-      r.data[r.pos + 2] == 'l' and r.data[r.pos + 3] == 's' and r.data[r.pos + 4] == 'e':
+    p.pos += 4
+  elif p.len - p.pos >= 5 and p.data[p.pos] == 'f' and p.data[p.pos + 1] == 'a' and
+      p.data[p.pos + 2] == 'l' and p.data[p.pos + 3] == 's' and p.data[p.pos + 4] == 'e':
     dst = false
-    r.pos += 5
+    p.pos += 5
   else:
-    r.raiseParseError("expected boolean")
+    p.raiseParseError("expected boolean")
 
-proc scanNumber(r: var JsonParser): int =
+proc scanNumber(p: var JsonParser): int =
   ## Matches the permissive token shape used by `std/parsejson.parseNumber`.
   ## Typed readers validate the scanned token during conversion.
-  r.skip()
-  result = r.pos
-  if r.pos < r.len and r.data[r.pos] == '-': inc r.pos
-  while r.pos < r.len and r.data[r.pos] in {'0'..'9'}: inc r.pos
-  if r.pos < r.len and r.data[r.pos] == '.':
-    inc r.pos
-    while r.pos < r.len and r.data[r.pos] in {'0'..'9'}: inc r.pos
-  if r.pos < r.len and r.data[r.pos] in {'e', 'E'}:
-    inc r.pos
-    if r.pos < r.len and r.data[r.pos] in {'+', '-'}: inc r.pos
-    while r.pos < r.len and r.data[r.pos] in {'0'..'9'}: inc r.pos
+  p.skip()
+  result = p.pos
+  if p.pos < p.len and p.data[p.pos] == '-': inc p.pos
+  while p.pos < p.len and p.data[p.pos] in {'0'..'9'}: inc p.pos
+  if p.pos < p.len and p.data[p.pos] == '.':
+    inc p.pos
+    while p.pos < p.len and p.data[p.pos] in {'0'..'9'}: inc p.pos
+  if p.pos < p.len and p.data[p.pos] in {'e', 'E'}:
+    inc p.pos
+    if p.pos < p.len and p.data[p.pos] in {'+', '-'}: inc p.pos
+    while p.pos < p.len and p.data[p.pos] in {'0'..'9'}: inc p.pos
 
-proc readInt[T: SomeInteger](r: var JsonParser; dst: var T) =
-  r.skip()
+proc readInt[T: SomeInteger](p: var JsonParser; dst: var T) =
+  p.skip()
   var negative = false
-  if r.pos < r.len and r.data[r.pos] == '-':
+  if p.pos < p.len and p.data[p.pos] == '-':
     negative = true
-    inc r.pos
-  if r.pos >= r.len: r.raiseParseError("incomplete integer")
+    inc p.pos
+  if p.pos >= p.len: p.raiseParseError("incomplete integer")
   let limit =
     when T is SomeUnsignedInt:
       uint64(high(T))
     else:
       uint64(high(T)) + uint64(ord(negative))
   var value = 0'u64
-  if r.data[r.pos] notin {'0'..'9'}:
-    r.raiseParseError("expected digit")
-  while r.pos < r.len and r.data[r.pos] in {'0'..'9'}:
-    let digit = uint64(ord(r.data[r.pos]) - ord('0'))
+  if p.data[p.pos] notin {'0'..'9'}:
+    p.raiseParseError("expected digit")
+  while p.pos < p.len and p.data[p.pos] in {'0'..'9'}:
+    let digit = uint64(ord(p.data[p.pos]) - ord('0'))
     if value > (limit - digit) div 10'u64:
-      r.raiseParseError("integer overflow")
+      p.raiseParseError("integer overflow")
     value = value * 10'u64 + digit
-    inc r.pos
-  if r.pos < r.len and r.data[r.pos] in {'.', 'e', 'E'}:
-    r.raiseParseError("expected integer")
+    inc p.pos
+  if p.pos < p.len and p.data[p.pos] in {'.', 'e', 'E'}:
+    p.raiseParseError("expected integer")
   when T is SomeUnsignedInt:
     if negative and value != 0:
-      r.raiseParseError("negative value for unsigned integer")
+      p.raiseParseError("negative value for unsigned integer")
     dst = T(value)
   else:
     if negative:
@@ -260,47 +260,47 @@ proc readInt[T: SomeInteger](r: var JsonParser; dst: var T) =
     else:
       dst = T(value)
 
-proc readFloat[T: SomeFloat](r: var JsonParser; dst: var T) =
+proc readFloat[T: SomeFloat](p: var JsonParser; dst: var T) =
   ## Uses a small exact fast path and the stdlib converter for difficult values.
-  r.skip()
-  let start = r.pos
-  if r.pos < r.len and r.data[r.pos] == '-': inc r.pos
-  if r.pos >= r.len: r.raiseParseError("incomplete number")
+  p.skip()
+  let start = p.pos
+  if p.pos < p.len and p.data[p.pos] == '-': inc p.pos
+  if p.pos >= p.len: p.raiseParseError("incomplete number")
   var significand = 0'u64
   var storedDigits = 0
   var fractionDigits = 0
   template addDigit() =
-    let digit = uint64(ord(r.data[r.pos]) - ord('0'))
+    let digit = uint64(ord(p.data[p.pos]) - ord('0'))
     if significand != 0 or digit != 0:
       if storedDigits < 19:
         significand = significand * 10'u64 + digit
         inc storedDigits
-    inc r.pos
-  while r.pos < r.len and r.data[r.pos] in {'0'..'9'}: addDigit()
-  if r.pos < r.len and r.data[r.pos] == '.':
-    inc r.pos
-    while r.pos < r.len and r.data[r.pos] in {'0'..'9'}:
+    inc p.pos
+  while p.pos < p.len and p.data[p.pos] in {'0'..'9'}: addDigit()
+  if p.pos < p.len and p.data[p.pos] == '.':
+    inc p.pos
+    while p.pos < p.len and p.data[p.pos] in {'0'..'9'}:
       addDigit()
       if fractionDigits < 100000: inc fractionDigits
   var exponent = 0
-  if r.pos < r.len and r.data[r.pos] in {'e', 'E'}:
-    inc r.pos
+  if p.pos < p.len and p.data[p.pos] in {'e', 'E'}:
+    inc p.pos
     var exponentNegative = false
-    if r.pos < r.len and r.data[r.pos] in {'+', '-'}:
-      exponentNegative = r.data[r.pos] == '-'
-      inc r.pos
-    let exponentStart = r.pos
-    while r.pos < r.len and r.data[r.pos] in {'0'..'9'}:
+    if p.pos < p.len and p.data[p.pos] in {'+', '-'}:
+      exponentNegative = p.data[p.pos] == '-'
+      inc p.pos
+    let exponentStart = p.pos
+    while p.pos < p.len and p.data[p.pos] in {'0'..'9'}:
       if exponent < 100000:
-        exponent = exponent * 10 + ord(r.data[r.pos]) - ord('0')
+        exponent = exponent * 10 + ord(p.data[p.pos]) - ord('0')
         if exponent > 100000: exponent = 100000
-      inc r.pos
-    if r.pos == exponentStart: r.raiseParseError("missing exponent digits")
+      inc p.pos
+    if p.pos == exponentStart: p.raiseParseError("missing exponent digits")
     if exponentNegative: exponent = -exponent
   let decimalExponent = exponent - fractionDigits
   var value = 0.0
   if significand == 0:
-    value = if r.data[start] == '-': -0.0 else: 0.0
+    value = if p.data[start] == '-': -0.0 else: 0.0
   # Every stored 19-digit significand exceeds the exact-integer threshold and
   # therefore takes the stdlib fallback below.
   elif significand < (1'u64 shl 53) and decimalExponent in -22..22:
@@ -309,167 +309,167 @@ proc readFloat[T: SomeFloat](r: var JsonParser; dst: var T) =
       value /= DecimalPowers[-decimalExponent]
     else:
       value *= DecimalPowers[decimalExponent]
-    if r.data[start] == '-': value = -value
+    if p.data[start] == '-': value = -value
   else:
     var token = ""
-    token.addSpan(r.data, start, r.pos)
+    token.addSpan(p.data, start, p.pos)
     let consumed = parseutils.parseFloat(token, value)
-    if consumed != token.len: r.raiseParseError("invalid number")
+    if consumed != token.len: p.raiseParseError("invalid number")
   dst = T(value)
 
-proc beginObject(r: var JsonParser) =
-  r.skip()
-  if r.pos >= r.len or r.data[r.pos] != '{': r.raiseParseError("expected object")
-  if r.depth > DepthLimit:
-    r.raiseParseError("maximum nesting depth exceeded")
-  inc r.pos
-  inc r.depth
+proc beginObject(p: var JsonParser) =
+  p.skip()
+  if p.pos >= p.len or p.data[p.pos] != '{': p.raiseParseError("expected object")
+  if p.depth > DepthLimit:
+    p.raiseParseError("maximum nesting depth exceeded")
+  inc p.pos
+  inc p.depth
 
-proc nextField(r: var JsonParser; first: var bool; field: var FieldName): bool =
-  r.skip()
+proc nextField(p: var JsonParser; first: var bool; f: var FieldName): bool =
+  p.skip()
   result = true
   if first:
     first = false
-    if r.pos < r.len and r.data[r.pos] == '}':
-      inc r.pos
-      dec r.depth
+    if p.pos < p.len and p.data[p.pos] == '}':
+      inc p.pos
+      dec p.depth
       result = false
   else:
-    if r.pos >= r.len: r.raiseParseError("unterminated object")
-    if r.data[r.pos] == '}':
-      inc r.pos
-      dec r.depth
+    if p.pos >= p.len: p.raiseParseError("unterminated object")
+    if p.data[p.pos] == '}':
+      inc p.pos
+      dec p.depth
       result = false
     else:
-      if r.data[r.pos] != ',': r.raiseParseError("expected comma or end of object")
-      inc r.pos
-      r.skip()
-      if r.pos < r.len and r.data[r.pos] == '}': r.raiseParseError("trailing comma in object")
+      if p.data[p.pos] != ',': p.raiseParseError("expected comma or end of object")
+      inc p.pos
+      p.skip()
+      if p.pos < p.len and p.data[p.pos] == '}': p.raiseParseError("trailing comma in object")
   if result:
-    if r.pos >= r.len or r.data[r.pos] != '"':
-      r.raiseParseError("expected string")
-    inc r.pos
-    let start = r.pos
-    while r.pos < r.len and r.data[r.pos] notin {'"', '\\'}:
-      inc r.pos
-    if r.pos >= r.len:
-      r.raiseParseError("unterminated string")
-    if r.data[r.pos] == '"':
-      field = FieldName(data: cast[ptr UncheckedArray[char]](addr r.data[start]),
-                        len: r.pos - start)
-      inc r.pos
+    if p.pos >= p.len or p.data[p.pos] != '"':
+      p.raiseParseError("expected string")
+    inc p.pos
+    let start = p.pos
+    while p.pos < p.len and p.data[p.pos] notin {'"', '\\'}:
+      inc p.pos
+    if p.pos >= p.len:
+      p.raiseParseError("unterminated string")
+    if p.data[p.pos] == '"':
+      f = FieldName(data: cast[ptr UncheckedArray[char]](addr p.data[start]),
+                    len: p.pos - start)
+      inc p.pos
     else:
-      r.pos = start - 1
+      p.pos = start - 1
       var rawStart = 0
       var rawLength = 0
       var escaped = false
-      r.parseString(r.scratch, rawStart, rawLength, escaped)
-      field = FieldName(
-        data: cast[ptr UncheckedArray[char]](cstring(r.scratch)),
-        len: r.scratch.len
+      p.parseString(p.scratch, rawStart, rawLength, escaped)
+      f = FieldName(
+        data: cast[ptr UncheckedArray[char]](cstring(p.scratch)),
+        len: p.scratch.len
       )
-    r.skip()
-    if r.pos >= r.len or r.data[r.pos] != ':': r.raiseParseError("expected colon")
-    inc r.pos
+    p.skip()
+    if p.pos >= p.len or p.data[p.pos] != ':': p.raiseParseError("expected colon")
+    inc p.pos
 
-proc beginArray(r: var JsonParser) =
-  r.skip()
-  if r.pos >= r.len or r.data[r.pos] != '[': r.raiseParseError("expected array")
-  if r.depth > DepthLimit:
-    r.raiseParseError("maximum nesting depth exceeded")
-  inc r.pos
-  inc r.depth
+proc beginArray(p: var JsonParser) =
+  p.skip()
+  if p.pos >= p.len or p.data[p.pos] != '[': p.raiseParseError("expected array")
+  if p.depth > DepthLimit:
+    p.raiseParseError("maximum nesting depth exceeded")
+  inc p.pos
+  inc p.depth
 
-proc nextElement(r: var JsonParser; first: var bool): bool =
-  r.skip()
+proc nextElement(p: var JsonParser; first: var bool): bool =
+  p.skip()
   result = true
   if first:
     first = false
-    if r.pos < r.len and r.data[r.pos] == ']':
-      inc r.pos
-      dec r.depth
+    if p.pos < p.len and p.data[p.pos] == ']':
+      inc p.pos
+      dec p.depth
       result = false
   else:
-    if r.pos >= r.len: r.raiseParseError("unterminated array")
-    if r.data[r.pos] == ']':
-      inc r.pos
-      dec r.depth
+    if p.pos >= p.len: p.raiseParseError("unterminated array")
+    if p.data[p.pos] == ']':
+      inc p.pos
+      dec p.depth
       result = false
     else:
-      if r.data[r.pos] != ',': r.raiseParseError("expected comma or end of array")
-      inc r.pos
-      r.skip()
-      if r.pos < r.len and r.data[r.pos] == ']': r.raiseParseError("trailing comma in array")
+      if p.data[p.pos] != ',': p.raiseParseError("expected comma or end of array")
+      inc p.pos
+      p.skip()
+      if p.pos < p.len and p.data[p.pos] == ']': p.raiseParseError("trailing comma in array")
 
-proc toString(field: FieldName): string =
+proc toString(f: FieldName): string =
   ## Materializes an owned copy of this ephemeral field name.
-  if field.len > 0:
-    copyMem(beginStore(result, field.len), field.data, field.len)
+  if f.len > 0:
+    copyMem(beginStore(result, f.len), f.data, f.len)
     endStore(result)
 
-proc `==`(field: FieldName; value: string): bool {.inline.} =
-  result = field.len == value.len and cmpMem(field.data, cstring(value), field.len) == 0
+proc `==`(f: FieldName; value: string): bool {.inline.} =
+  result = f.len == value.len and cmpMem(f.data, cstring(value), f.len) == 0
 
-proc skipUnicodeEscape(r: var JsonParser) {.noinline.} =
-  let high = r.readHex()
+proc skipUnicodeEscape(p: var JsonParser) {.noinline.} =
+  let high = p.readHex()
   if high in 0xd800..0xdbff:
-    if r.pos + 2 > r.len or r.data[r.pos] != '\\' or r.data[r.pos + 1] != 'u':
-      r.raiseParseError("high surrogate without low surrogate")
-    r.pos += 2
-    let low = r.readHex()
-    if low notin 0xdc00..0xdfff: r.raiseParseError("invalid low surrogate")
+    if p.pos + 2 > p.len or p.data[p.pos] != '\\' or p.data[p.pos + 1] != 'u':
+      p.raiseParseError("high surrogate without low surrogate")
+    p.pos += 2
+    let low = p.readHex()
+    if low notin 0xdc00..0xdfff: p.raiseParseError("invalid low surrogate")
 
-proc skipString(r: var JsonParser) =
-  r.skip()
-  if r.pos >= r.len or r.data[r.pos] != '"': r.raiseParseError("expected string")
-  inc r.pos
-  while r.pos < r.len:
-    while r.pos < r.len and r.data[r.pos] notin {'"', '\\'}:
-      inc r.pos
-    if r.pos >= r.len:
+proc skipString(p: var JsonParser) =
+  p.skip()
+  if p.pos >= p.len or p.data[p.pos] != '"': p.raiseParseError("expected string")
+  inc p.pos
+  while p.pos < p.len:
+    while p.pos < p.len and p.data[p.pos] notin {'"', '\\'}:
+      inc p.pos
+    if p.pos >= p.len:
       break
-    case r.data[r.pos]
+    case p.data[p.pos]
     of '"':
-      inc r.pos
+      inc p.pos
       return
     of '\\':
-      inc r.pos
-      if r.pos >= r.len: r.raiseParseError("incomplete escape")
-      let escaped = r.data[r.pos]
-      inc r.pos
+      inc p.pos
+      if p.pos >= p.len: p.raiseParseError("incomplete escape")
+      let escaped = p.data[p.pos]
+      inc p.pos
       case escaped
       of '"', '\\', '/', 'b', 'f', 'n', 'r', 't': discard
-      of 'u': r.skipUnicodeEscape()
+      of 'u': p.skipUnicodeEscape()
       else:
         discard
     else:
       discard
-  r.raiseParseError("unterminated string")
+  p.raiseParseError("unterminated string")
 
-proc skipValue(r: var JsonParser) =
+proc skipValue(p: var JsonParser) =
   ## Validates and discards exactly one value without materializing a DOM.
-  r.skip()
-  if r.pos >= r.len:
-    r.raiseParseError("expected value")
-  case r.data[r.pos]
-  of 'n': r.readNull()
+  p.skip()
+  if p.pos >= p.len:
+    p.raiseParseError("expected value")
+  case p.data[p.pos]
+  of 'n': p.readNull()
   of 't', 'f':
     var value = false
-    r.readBool(value)
-  of '"': r.skipString()
+    p.readBool(value)
+  of '"': p.skipString()
   of '-', '.', '0'..'9':
-    discard r.scanNumber()
+    discard p.scanNumber()
   of '[':
-    r.beginArray()
+    p.beginArray()
     var first = true
-    while r.nextElement(first): r.skipValue()
+    while p.nextElement(first): p.skipValue()
   of '{':
-    r.beginObject()
+    p.beginObject()
     var first = true
-    var field: FieldName
-    while r.nextField(first, field): r.skipValue()
+    var f: FieldName
+    while p.nextField(first, f): p.skipValue()
   else:
-    r.raiseParseError("expected value")
+    p.raiseParseError("expected value")
 
 proc kind*(p: var JsonParser): JsonKind =
   p.skip()
@@ -487,143 +487,143 @@ iterator jsonFields*(p: var JsonParser): string =
   ## Iterates an object and leaves `p` positioned at each field value.
   p.beginObject()
   var first = true
-  var field: FieldName
-  while p.nextField(first, field):
-    yield field.toString()
+  var f: FieldName
+  while p.nextField(first, f):
+    yield f.toString()
 
 proc skipJson*(p: var JsonParser) =
   ## Discards one JSON value, validating it without materializing it.
   p.skipValue()
 
-proc finish(r: var JsonParser) =
-  if r.depth != 0: r.raiseParseError("unterminated container")
-  r.skip()
-  if r.pos != r.len: r.raiseParseError("trailing data")
+proc finish(p: var JsonParser) =
+  if p.depth != 0: p.raiseParseError("unterminated container")
+  p.skip()
+  if p.pos != p.len: p.raiseParseError("trailing data")
 
-proc readJson*(dst: var string; r: var JsonParser; unknownFields: UnknownFieldPolicy) =
-  r.readString(dst)
+proc readJson*(dst: var string; p: var JsonParser; unknownFields: UnknownFieldPolicy) =
+  p.readString(dst)
 
-proc readJson*(dst: var bool; r: var JsonParser; unknownFields: UnknownFieldPolicy) =
-  r.readBool(dst)
+proc readJson*(dst: var bool; p: var JsonParser; unknownFields: UnknownFieldPolicy) =
+  p.readBool(dst)
 
-proc readJson*[T: SomeInteger](dst: var T; r: var JsonParser;
+proc readJson*[T: SomeInteger](dst: var T; p: var JsonParser;
                                 unknownFields: UnknownFieldPolicy) =
-  r.readInt(dst)
+  p.readInt(dst)
 
-proc readJson*[T: SomeFloat](dst: var T; r: var JsonParser;
+proc readJson*[T: SomeFloat](dst: var T; p: var JsonParser;
                               unknownFields: UnknownFieldPolicy) =
-  r.readFloat(dst)
+  p.readFloat(dst)
 
-proc readJson*[T: enum](dst: var T; r: var JsonParser; unknownFields: UnknownFieldPolicy) =
+proc readJson*[T: enum](dst: var T; p: var JsonParser; unknownFields: UnknownFieldPolicy) =
   var value: string
-  r.readString(value)
+  p.readString(value)
   try:
     dst = parseEnum[T](value)
   except ValueError:
-    r.raiseParseError("expected a valid " & $T)
+    p.raiseParseError("expected a valid " & $T)
 
-proc readJson*[T](dst: var Option[T]; r: var JsonParser; unknownFields: UnknownFieldPolicy) =
-  if r.consumeNull():
+proc readJson*[T](dst: var Option[T]; p: var JsonParser; unknownFields: UnknownFieldPolicy) =
+  if p.consumeNull():
     dst = none(T)
   else:
     var value = default(T)
     mixin readJson
-    readJson(value, r, unknownFields)
+    readJson(value, p, unknownFields)
     dst = some(value)
 
-proc readJson*[T](dst: var seq[T]; r: var JsonParser; unknownFields: UnknownFieldPolicy) =
-  r.beginArray()
+proc readJson*[T](dst: var seq[T]; p: var JsonParser; unknownFields: UnknownFieldPolicy) =
+  p.beginArray()
   var first = true
   mixin readJson
-  while r.nextElement(first):
+  while p.nextElement(first):
     dst.add default(T)
-    readJson(dst[^1], r, unknownFields)
+    readJson(dst[^1], p, unknownFields)
 
-proc readJson*[T](dst: var (SomeSet[T]|set[T]); r: var JsonParser;
+proc readJson*[T](dst: var (SomeSet[T]|set[T]); p: var JsonParser;
                   unknownFields: UnknownFieldPolicy) =
-  r.beginArray()
+  p.beginArray()
   var first = true
   mixin readJson
-  while r.nextElement(first):
+  while p.nextElement(first):
     var item = default(T)
-    readJson(item, r, unknownFields)
+    readJson(item, p, unknownFields)
     dst.incl item
 
 proc readJson*[T](dst: var (Table[string, T]|OrderedTable[string, T]);
-                  r: var JsonParser; unknownFields: UnknownFieldPolicy) =
-  r.beginObject()
+                  p: var JsonParser; unknownFields: UnknownFieldPolicy) =
+  p.beginObject()
   var first = true
-  var fieldName: FieldName
+  var f: FieldName
   mixin readJson
-  while r.nextField(first, fieldName):
-    let key = fieldName.toString()
+  while p.nextField(first, f):
+    let key = f.toString()
     var value = default(T)
-    readJson(value, r, unknownFields)
+    readJson(value, p, unknownFields)
     dst[key] = value
 
-proc readJson*[I, T](dst: var array[I, T]; r: var JsonParser;
-                      unknownFields: UnknownFieldPolicy) =
-  r.beginArray()
+proc readJson*[I, T](dst: var array[I, T]; p: var JsonParser;
+                     unknownFields: UnknownFieldPolicy) =
+  p.beginArray()
   var first = true
   mixin readJson
   for item in mitems(dst):
-    if not r.nextElement(first):
-      r.raiseParseError("expected array with " & $dst.len & " elements")
-    readJson(item, r, unknownFields)
-  if r.nextElement(first):
-    r.raiseParseError("expected array with " & $dst.len & " elements")
+    if not p.nextElement(first):
+      p.raiseParseError("expected array with " & $dst.len & " elements")
+    readJson(item, p, unknownFields)
+  if p.nextElement(first):
+    p.raiseParseError("expected array with " & $dst.len & " elements")
 
-proc readObjectFields[T](dst: var T; r: var JsonParser;
+proc readObjectFields[T](dst: var T; p: var JsonParser;
                          unknownFields: UnknownFieldPolicy) {.inline.} =
-  r.beginObject()
+  p.beginObject()
   mixin readJson
   var first = true
-  var jsonField: FieldName
-  while r.nextField(first, jsonField):
+  var f: FieldName
+  while p.nextField(first, f):
     var known = false
     for name, field in fieldPairs(dst):
-      if jsonField == name:
-        readJson(field, r, unknownFields)
+      if f == name:
+        readJson(field, p, unknownFields)
         known = true
         break
     if not known:
       if unknownFields == ufReject:
-        r.raiseParseError("expected known field, got \"" & jsonField.toString() & "\"")
-      r.skipValue()
+        p.raiseParseError("expected known field, got \"" & f.toString() & "\"")
+      p.skipValue()
 
-proc readJson*[T: tuple](dst: var T; r: var JsonParser; unknownFields: UnknownFieldPolicy) =
+proc readJson*[T: tuple](dst: var T; p: var JsonParser; unknownFields: UnknownFieldPolicy) =
   when isNamedTuple(T):
-    readObjectFields(dst, r, unknownFields)
+    readObjectFields(dst, p, unknownFields)
   else:
-    r.beginArray()
+    p.beginArray()
     var first = true
     mixin readJson
     for field in fields(dst):
-      if not r.nextElement(first):
-        r.raiseParseError("expected tuple with the expected number of elements")
-      readJson(field, r, unknownFields)
-    if r.nextElement(first):
-      r.raiseParseError("expected tuple with the expected number of elements")
+      if not p.nextElement(first):
+        p.raiseParseError("expected tuple with the expected number of elements")
+      readJson(field, p, unknownFields)
+    if p.nextElement(first):
+      p.raiseParseError("expected tuple with the expected number of elements")
 
-proc readJson*[T: object](dst: var T; r: var JsonParser; unknownFields: UnknownFieldPolicy) =
-  readObjectFields(dst, r, unknownFields)
+proc readJson*[T: object](dst: var T; p: var JsonParser; unknownFields: UnknownFieldPolicy) =
+  readObjectFields(dst, p, unknownFields)
 
-proc readJson*[T: ref object](dst: var T; r: var JsonParser;
+proc readJson*[T: ref object](dst: var T; p: var JsonParser;
                                unknownFields: UnknownFieldPolicy) =
-  if r.consumeNull():
+  if p.consumeNull():
     dst = nil
   else:
     new dst
     mixin readJson
-    readJson(dst[], r, unknownFields)
+    readJson(dst[], p, unknownFields)
 
-proc readJson*(dst: var RawJson; r: var JsonParser; unknownFields: UnknownFieldPolicy) =
-  r.skip()
-  let start = r.pos
-  r.skipValue()
+proc readJson*(dst: var RawJson; p: var JsonParser; unknownFields: UnknownFieldPolicy) =
+  p.skip()
+  let start = p.pos
+  p.skipValue()
   let raw = FieldName(
-    data: cast[ptr UncheckedArray[char]](addr r.data[start]),
-    len: r.pos - start
+    data: cast[ptr UncheckedArray[char]](addr p.data[start]),
+    len: p.pos - start
   )
   dst = RawJson(raw.toString())
 
@@ -635,10 +635,10 @@ proc reserve(w: var JsonWriter; extra: int) {.inline.} =
     let newLen = max(required, max(MinWriteCapacity, w.output.len * 2))
     w.data = w.output.beginStore(newLen)
 
-proc append(w: var JsonWriter; source: ptr UncheckedArray[char]; start, len: int) {.inline.} =
+proc append(w: var JsonWriter; src: ptr UncheckedArray[char]; start, len: int) {.inline.} =
   if len > 0:
     w.reserve(len)
-    copyMem(addr w.data[w.pos], addr source[start], len)
+    copyMem(addr w.data[w.pos], addr src[start], len)
     w.pos += len
 
 proc write*(w: var JsonWriter; value: string) {.inline.} =
@@ -814,50 +814,50 @@ proc finish(w: var JsonWriter): string =
     w.data = nil
   result = move(w.output)
 
-proc canonicalizeValue(r: var JsonParser; w: var JsonWriter) =
-  case r.kind
+proc canonicalizeValue(p: var JsonParser; w: var JsonWriter) =
+  case p.kind
   of jkNull:
-    r.readNull()
+    p.readNull()
     w.write "null"
   of jkBool:
     var value = false
-    r.readBool(value)
+    p.readBool(value)
     w.writeJson(value)
   of jkString:
     var value = ""
-    r.readString(value)
+    p.readString(value)
     w.writeJson(value)
   of jkNumber:
-    let start = r.scanNumber()
-    w.append(r.data, start, r.pos - start)
+    let start = p.scanNumber()
+    w.append(p.data, start, p.pos - start)
   of jkArray:
-    r.beginArray()
+    p.beginArray()
     w.put '['
     var comma = false
     var first = true
-    while r.nextElement(first):
+    while p.nextElement(first):
       if comma: w.put ','
       else: comma = true
-      r.canonicalizeValue(w)
+      p.canonicalizeValue(w)
     w.put ']'
   of jkObject:
-    r.beginObject()
+    p.beginObject()
     w.put '{'
     var comma = false
     var first = true
-    var field: FieldName
-    while r.nextField(first, field):
+    var f: FieldName
+    while p.nextField(first, f):
       if comma: w.put ','
       else: comma = true
-      w.escapeJson(field.toString())
+      w.escapeJson(f.toString())
       w.put ':'
-      r.canonicalizeValue(w)
+      p.canonicalizeValue(w)
     w.put '}'
 
-proc readJson*(dst: var CanonRawJson; r: var JsonParser;
+proc readJson*(dst: var CanonRawJson; p: var JsonParser;
                unknownFields: UnknownFieldPolicy) =
   var writer = JsonWriter()
-  r.canonicalizeValue(writer)
+  p.canonicalizeValue(writer)
   dst = CanonRawJson(writer.finish())
 
 proc writeJson*(w: var JsonWriter; value: CanonRawJson) =
