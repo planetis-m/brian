@@ -19,8 +19,8 @@ type
     ufSkip, ufReject
 
   FieldName = object
-    ## An ephemeral object field name.  Ordinary unescaped names borrow the
-    ## input; escaped names borrow reader-owned scratch storage.
+    # An ephemeral object field name.  Ordinary unescaped names borrow the
+    # input; escaped names borrow reader-owned scratch storage.
     data: ptr UncheckedArray[char]
     len: int
 
@@ -35,9 +35,9 @@ type
   JsonWriter* = object
     ## Output sink supplied to custom `writeJson` overloads.
     output: string
-      ## Storage capacity until `finish` truncates it to the written length.
+      # Storage capacity until `finish` truncates it to the written length.
     data: ptr UncheckedArray[char]
-      ## A write cursor into `output`; the minimum capacity keeps it heap-backed.
+      # A write cursor into `output`; the minimum capacity keeps it heap-backed.
     pos: int
 
   RawJson* = distinct string
@@ -407,20 +407,8 @@ proc toString(field: FieldName): string =
     copyMem(beginStore(result, field.len), field.data, field.len)
     endStore(result)
 
-{.push boundChecks: off.}
-
 proc `==`(field: FieldName; value: string): bool {.inline.} =
-  result = field.len == value.len
-  if result:
-    for i in 0..<value.len:
-      if field.data[i] != value[i]:
-        result = false
-        break
-
-{.pop.}
-
-proc `==`(value: string; field: FieldName): bool {.inline.} =
-  result = field == value
+  result = field.len == value.len and cmpMem(field.data, cstring(value), field.len) == 0
 
 proc skipUnicodeEscape(r: var JsonParser) {.noinline.} =
   let high = r.readHex()
@@ -544,7 +532,6 @@ proc readJson*[T](dst: var Option[T]; r: var JsonParser; unknownFields: UnknownF
     dst = some(value)
 
 proc readJson*[T](dst: var seq[T]; r: var JsonParser; unknownFields: UnknownFieldPolicy) =
-  dst.setLen(0)
   r.beginArray()
   var first = true
   mixin readJson
