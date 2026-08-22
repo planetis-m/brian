@@ -609,7 +609,7 @@ proc readJson*[T: object](dst: var T; p: var JsonParser; unknownFields: UnknownF
   readObjectFields(dst, p, unknownFields)
 
 proc readJson*[T: ref object](dst: var T; p: var JsonParser;
-                               unknownFields: UnknownFieldPolicy) =
+                              unknownFields: UnknownFieldPolicy) =
   if p.consumeNull():
     dst = nil
   else:

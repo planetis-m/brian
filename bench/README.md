@@ -11,6 +11,10 @@ valgrind --tool=cachegrind ./strings_plain
 Use `-d:danger` only as an additional correctness/configuration check; compare
 instruction profiles from the same release build and fixed payload.
 
+For matched Brian/jsonx/jsony object comparisons, see
+[`compare/README.md`](compare/README.md). Its dependencies and local compiler
+paths are intentionally kept out of the repository.
+
 - `strings_plain` — unescaped string fast path and destination allocation.
 - `strings_escaped` — escape decoding and Unicode escape handling.
 - `objects_known` — compile-time `fieldPairs` mapping for known object fields.

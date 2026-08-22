@@ -19,3 +19,11 @@ nimcache/
 /bench/write_integers
 /bench/write_objects
 /bench/write_raw
+
+# Local dependencies and generated configuration for cross-library benchmarks.
+/bench/compare/deps/
+/bench/compare/atlas.lock
+/bench/compare/nim.cfg
+/bench/compare/nimcache/
+/bench/compare/objects_read_*
+/bench/compare/objects_write_*

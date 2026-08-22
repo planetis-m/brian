@@ -186,13 +186,13 @@ Nim container type.
 
 Brian's focused benchmarks use Cachegrind instruction counts rather than
 wall-clock timings. In a matched typed-object workload compiled with Nim 2.3.1
-and `-d:release`, changing only the imported library produced:
+and `-d:release -g`, changing only the imported library produced:
 
 | Library | Decode 20,000 objects | vs Brian | Encode 40,000 objects | vs Brian |
 | --- | ---: | ---: | ---: | ---: |
-| Brian | 96.49M instructions | 1.00x | 77.53M instructions | 1.00x |
-| jsonx | 108.61M | 1.13x | 287.01M | 3.70x |
-| jsony | 120.25M | 1.25x | 94.60M | 1.22x |
+| Brian | 143.01M instructions | 1.00x | 73.78M instructions | 1.00x |
+| jsonx | 165.66M | 1.16x | 242.45M | 3.29x |
+| jsony | 166.32M | 1.16x | 98.75M | 1.34x |
 
 Lower is better.
 
