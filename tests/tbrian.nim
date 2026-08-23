@@ -22,6 +22,7 @@ type
   Page = object
     number: int
     status: string
+  FailingWrite = object
 
 proc readJson*(dst: var Page; p: var JsonParser;
                unknownFields: UnknownFieldPolicy) =
@@ -58,6 +59,10 @@ proc writeJson*(w: var JsonWriter; value: Page) =
   writeJson(w, value.status)
   w.write "}"
 
+proc writeJson*(w: var JsonWriter; value: FailingWrite) =
+  w.write "allocated writer storage"
+  raise newException(ValueError, "intentional writer failure")
+
 block object_round_trip:
   let source = """{
     "name":"\u0391\u03b8\u03ae\u03bd\u03b1",
@@ -89,6 +94,8 @@ block custom_object_and_writer:
   let page = fromJson("{\"number\":4,\"status\":\"ok\"}", Page)
   doAssert page == Page(number: 4, status: "ok")
   doAssert toJson(page) == "{\"number\":4,\"status\":\"ok\"}"
+  doAssertRaises ValueError:
+    discard toJson(FailingWrite())
 
 block escaped_field_names:
   doAssert fromJson("{\"na\\u006de\":\"x\"}", Sample).name == "x"

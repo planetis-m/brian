@@ -50,9 +50,7 @@ type
     active: bool
 
 let person = fromJson(
-  """{"name":"Ada","age":37,"active":true}""",
-  Person
-)
+  """{"name":"Ada","age":37,"active":true}""", Person)
 
 echo person.name
 echo toJson(person)
@@ -108,9 +106,7 @@ type
     schema: RawJson
 
 let tool = fromJson(
-  """{"name":"search","schema": { "type": "object" }}""",
-  Tool
-)
+  """{"name":"search","schema": { "type": "object" }}""", Tool)
 
 echo string(tool.schema) # { "type": "object" }
 echo toJson(tool)        # {"name":"search","schema":{ "type": "object" }}
@@ -191,9 +187,9 @@ and `-d:release -g`, changing only the imported library produced:
 
 | Library | Decode 20,000 objects | vs Brian | Encode 40,000 objects | vs Brian |
 | --- | ---: | ---: | ---: | ---: |
-| Brian | 143.01M instructions | 1.00x | 73.78M instructions | 1.00x |
-| jsonx | 165.66M | 1.16x | 242.45M | 3.29x |
-| jsony | 166.32M | 1.16x | 98.75M | 1.34x |
+| Brian | 143.01M instructions | 1.00x | 72.71M instructions | 1.00x |
+| jsonx | 165.66M | 1.16x | 242.45M | 3.33x |
+| jsony | 166.32M | 1.16x | 98.75M | 1.36x |
 
 Lower is better.
 

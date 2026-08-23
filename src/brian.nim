@@ -34,11 +34,9 @@ type
 
   JsonWriter* = object
     ## Output sink supplied to custom `writeJson` overloads.
-    output: string
-      # Storage capacity until `finish` truncates it to the written length.
     data: ptr UncheckedArray[char]
-      # A write cursor into `output`; the minimum capacity keeps it heap-backed.
     pos: int
+    capacity: int
 
   RawJson* = distinct string
     ## Trusted bytes representing one JSON value.
@@ -46,12 +44,21 @@ type
   CanonRawJson* = distinct string
     ## A deterministic, whitespace-free re-emission of one JSON value.
 
+proc `=destroy`(w: JsonWriter) =
+  if w.data != nil:
+    dealloc(w.data)
+
+proc `=wasMoved`(w: var JsonWriter) =
+  w.data = nil
+  w.pos = 0
+  w.capacity = 0
+
 proc `=copy`(dest: var JsonWriter; src: JsonWriter) {.error.}
+proc `=dup`(src: JsonWriter): JsonWriter {.error.}
 
 const
   DepthLimit = 1_000
   MinWriteCapacity = 64
-    # Keeps writer storage heap-backed so `data` remains valid across moves.
   Digits100 =
     "000102030405060708091011121314151617181920212223242526272829" &
     "303132333435363738394041424344454647484950515253545556575859" &
@@ -364,10 +371,7 @@ proc nextField(p: var JsonParser; first: var bool; f: var FieldName): bool =
       var rawLength = 0
       var escaped = false
       p.parseString(p.scratch, rawStart, rawLength, escaped)
-      f = FieldName(
-        data: readRawData(p.scratch),
-        len: p.scratch.len
-      )
+      f = FieldName(data: readRawData(p.scratch), len: p.scratch.len)
     p.skip()
     if p.pos >= p.len or p.data[p.pos] != ':': p.raiseParseError("expected colon")
     inc p.pos
@@ -621,19 +625,16 @@ proc readJson*(dst: var RawJson; p: var JsonParser; unknownFields: UnknownFieldP
   p.skip()
   let start = p.pos
   p.skipValue()
-  let raw = FieldName(
-    data: cast[ptr UncheckedArray[char]](addr p.data[start]),
-    len: p.pos - start
-  )
+  let raw = FieldName(data: cast[ptr UncheckedArray[char]](addr p.data[start]),
+                      len: p.pos - start)
   dst = RawJson(raw.toString())
 
 proc reserve(w: var JsonWriter; extra: int) {.inline.} =
   let required = w.pos + extra
-  if required > w.output.len:
-    if w.data != nil:
-      w.output.endStore()
-    let newLen = max(required, max(MinWriteCapacity, w.output.len * 2))
-    w.data = w.output.beginStore(newLen)
+  if required > w.capacity:
+    let newCapacity = max(required, max(MinWriteCapacity, w.capacity * 2))
+    w.data = cast[ptr UncheckedArray[char]](realloc(w.data, newCapacity))
+    w.capacity = newCapacity
 
 proc append(w: var JsonWriter; src: ptr UncheckedArray[char]; start, len: int) {.inline.} =
   if len > 0:
@@ -814,11 +815,9 @@ proc writeJson*(w: var JsonWriter; value: RawJson) =
   w.write string(value)
 
 proc finish(w: var JsonWriter): string =
-  w.output.setLen(w.pos)
-  if w.data != nil:
-    w.output.endStore()
-    w.data = nil
-  result = move(w.output)
+  if w.pos > 0:
+    copyMem(result.beginStore(w.pos), w.data, w.pos)
+    result.endStore()
 
 proc canonicalizeValue(p: var JsonParser; w: var JsonWriter) =
   case p.kind
@@ -872,9 +871,7 @@ proc writeJson*(w: var JsonWriter; value: CanonRawJson) =
 proc fromJson*[T](input: string; dst: var T;
                   unknownFields = ufSkip) =
   ## Decodes one complete JSON value directly into `dst`.
-  var reader = JsonParser(
-    data: readRawData(input), len: input.len
-  )
+  var reader = JsonParser(data: readRawData(input), len: input.len)
   mixin readJson
   readJson(dst, reader, unknownFields)
   reader.finish()
@@ -894,9 +891,7 @@ proc toJson*[T](value: T): string =
 iterator jsonItems*[T](input: string; typ: typedesc[T];
                        unknownFields = ufSkip): T =
   ## Decodes the elements of one top-level JSON array lazily.
-  var reader = JsonParser(
-    data: readRawData(input), len: input.len
-  )
+  var reader = JsonParser(data: readRawData(input), len: input.len)
   reader.beginArray()
   var first = true
   mixin readJson
