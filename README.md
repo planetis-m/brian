@@ -181,14 +181,14 @@ Nim container type.
 
 ## Performance
 
-Cachegrind instruction counts (`-d:release -g`) and encoding times
+Cachegrind instructions (`-d:release -g`) and times
 (`-d:danger`, default strings; median of 15 runs):
 
-| Library | Decode 20,000 objects | Encode 40,000 objects | Encode 10,000,000 objects |
-| --- | ---: | ---: | ---: |
-| Brian | 143.01M instructions | 72.71M instructions | 0.54 s |
-| jsonx | 165.66M | 242.45M | 2.47 s |
-| jsony | 166.32M | 98.75M | 0.80 s |
+| Library | Read (CG) | Write (CG) | Read 2M | Write 10M |
+| --- | ---: | ---: | ---: | ---: |
+| Brian | 143.01M | 72.71M | 0.51 s | 0.54 s |
+| jsonx | 165.66M | 242.45M | 0.74 s | 2.47 s |
+| jsony | 166.32M | 98.75M | 0.74 s | 0.80 s |
 
 Lower is better.
 
