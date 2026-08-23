@@ -815,6 +815,7 @@ proc writeJson*(w: var JsonWriter; value: RawJson) =
   w.write string(value)
 
 proc finish(w: var JsonWriter): string =
+  result = ""
   if w.pos > 0:
     copyMem(result.beginStore(w.pos), w.data, w.pos)
     result.endStore()
