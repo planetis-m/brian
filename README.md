@@ -43,10 +43,11 @@ nimble install https://github.com/planetis-m/brian
 ```nim
 import brian
 
-type Person = object
-  name: string
-  age: int
-  active: bool
+type
+  Person = object
+    name: string
+    age: int
+    active: bool
 
 let person = fromJson(
   """{"name":"Ada","age":37,"active":true}""",
@@ -79,14 +80,13 @@ whole array:
 ```nim
 import brian
 
-type Event = object
-  id: int
-  name: string
+type
+  Event = object
+    id: int
+    name: string
 
 for event in jsonItems(
-  """[{"id":1,"name":"opened"},{"id":2,"name":"closed"}]""",
-  Event
-):
+    """[{"id":1,"name":"opened"},{"id":2,"name":"closed"}]""", Event):
   echo event.id, ": ", event.name
 ```
 
@@ -102,9 +102,10 @@ reserializing it:
 ```nim
 import brian
 
-type Tool = object
-  name: string
-  schema: RawJson
+type
+  Tool = object
+    name: string
+    schema: RawJson
 
 let tool = fromJson(
   """{"name":"search","schema": { "type": "object" }}""",

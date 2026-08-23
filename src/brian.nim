@@ -51,7 +51,7 @@ proc `=copy`(dest: var JsonWriter; src: JsonWriter) {.error.}
 const
   DepthLimit = 1_000
   MinWriteCapacity = 64
-    ## Keeps writer storage heap-backed so `data` remains valid across moves.
+    # Keeps writer storage heap-backed so `data` remains valid across moves.
   Digits100 =
     "000102030405060708091011121314151617181920212223242526272829" &
     "303132333435363738394041424344454647484950515253545556575859" &
@@ -159,7 +159,7 @@ proc parseString(p: var JsonParser; dst: var string; rawStart: var int;
         if codePoint in 0xd800..0xdbff:
           if p.pos + 2 > p.len or p.data[p.pos] != '\\' or p.data[p.pos + 1] != 'u':
             p.raiseParseError("high surrogate without low surrogate")
-          p.pos += 2
+          inc p.pos, 2
           let low = p.readHex()
           if low notin 0xdc00..0xdfff: p.raiseParseError("invalid low surrogate")
           codePoint = 0x10000 + ((codePoint - 0xd800) shl 10) + (low - 0xdc00)
@@ -190,7 +190,7 @@ proc consumeNull(p: var JsonParser): bool {.inline.} =
     p.data[p.pos + 1] == 'u' and p.data[p.pos + 2] == 'l' and
     p.data[p.pos + 3] == 'l'
   if result:
-    p.pos += 4
+    inc p.pos, 4
 
 proc readNull(p: var JsonParser) =
   if not p.consumeNull():
@@ -201,17 +201,17 @@ proc readBool(p: var JsonParser; dst: var bool) =
   if p.len - p.pos >= 4 and p.data[p.pos] == 't' and p.data[p.pos + 1] == 'r' and
       p.data[p.pos + 2] == 'u' and p.data[p.pos + 3] == 'e':
     dst = true
-    p.pos += 4
+    inc p.pos, 4
   elif p.len - p.pos >= 5 and p.data[p.pos] == 'f' and p.data[p.pos + 1] == 'a' and
       p.data[p.pos + 2] == 'l' and p.data[p.pos + 3] == 's' and p.data[p.pos + 4] == 'e':
     dst = false
-    p.pos += 5
+    inc p.pos, 5
   else:
     p.raiseParseError("expected boolean")
 
 proc scanNumber(p: var JsonParser): int =
-  ## Matches the permissive token shape used by `std/parsejson.parseNumber`.
-  ## Typed readers validate the scanned token during conversion.
+  # Matches the permissive token shape used by `std/parsejson.parseNumber`.
+  # Typed readers validate the scanned token during conversion.
   p.skip()
   result = p.pos
   if p.pos < p.len and p.data[p.pos] == '-': inc p.pos
@@ -261,7 +261,7 @@ proc readInt[T: SomeInteger](p: var JsonParser; dst: var T) =
       dst = T(value)
 
 proc readFloat[T: SomeFloat](p: var JsonParser; dst: var T) =
-  ## Uses a small exact fast path and the stdlib converter for difficult values.
+  # Uses a small exact fast path and the stdlib converter for difficult values.
   p.skip()
   let start = p.pos
   if p.pos < p.len and p.data[p.pos] == '-': inc p.pos
@@ -402,7 +402,7 @@ proc nextElement(p: var JsonParser; first: var bool): bool =
       if p.pos < p.len and p.data[p.pos] == ']': p.raiseParseError("trailing comma in array")
 
 proc toString(f: FieldName): string =
-  ## Materializes an owned copy of this ephemeral field name.
+  # Materializes an owned copy of this ephemeral field name.
   if f.len > 0:
     copyMem(beginStore(result, f.len), f.data, f.len)
     endStore(result)
@@ -415,7 +415,7 @@ proc skipUnicodeEscape(p: var JsonParser) {.noinline.} =
   if high in 0xd800..0xdbff:
     if p.pos + 2 > p.len or p.data[p.pos] != '\\' or p.data[p.pos + 1] != 'u':
       p.raiseParseError("high surrogate without low surrogate")
-    p.pos += 2
+    inc p.pos, 2
     let low = p.readHex()
     if low notin 0xdc00..0xdfff: p.raiseParseError("invalid low surrogate")
 
@@ -447,7 +447,7 @@ proc skipString(p: var JsonParser) =
   p.raiseParseError("unterminated string")
 
 proc skipValue(p: var JsonParser) =
-  ## Validates and discards exactly one value without materializing a DOM.
+  # Validates and discards exactly one value without materializing a DOM.
   p.skip()
   if p.pos >= p.len:
     p.raiseParseError("expected value")
@@ -639,7 +639,7 @@ proc append(w: var JsonWriter; src: ptr UncheckedArray[char]; start, len: int) {
   if len > 0:
     w.reserve(len)
     copyMem(addr w.data[w.pos], addr src[start], len)
-    w.pos += len
+    inc w.pos, len
 
 proc write*(w: var JsonWriter; value: string) {.inline.} =
   ## Appends raw JSON syntax from a custom serializer.
