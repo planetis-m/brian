@@ -123,6 +123,15 @@ proc addSpan(dst: var string; src: ptr UncheckedArray[char]; start, stop: int) {
       if oldLength < 8:
         endStore(dst)
 
+template captureSpan(dst: string; src: ptr UncheckedArray[char];
+                     start, stop: int) =
+  # Stores the borrowed span [start, stop) as `dst`'s entire contents.
+  let length = stop - start
+  if length > 0:
+    {.cast(noSideEffect).}:
+      copyMem(beginStore(dst, length), addr src[start], length)
+      endStore(dst)
+
 proc parseString(p: var JsonParser; dst: var string; rawStart: var int;
                  rawLength: var int; hadEscape: var bool) =
   p.skip()
@@ -318,8 +327,8 @@ proc readFloat[T: SomeFloat](p: var JsonParser; dst: var T) =
       value *= DecimalPowers[decimalExponent]
     if p.data[start] == '-': value = -value
   else:
-    var token = ""
-    token.addSpan(p.data, start, p.pos)
+    var token: string
+    captureSpan(token, p.data, start, p.pos)
     let consumed = parseutils.parseFloat(token, value)
     if consumed != token.len: p.raiseParseError("invalid number")
   dst = T(value)
@@ -407,9 +416,7 @@ proc nextElement(p: var JsonParser; first: var bool): bool =
 
 proc toString(f: FieldName): string =
   # Materializes an owned copy of this ephemeral field name.
-  if f.len > 0:
-    copyMem(beginStore(result, f.len), f.data, f.len)
-    endStore(result)
+  captureSpan(result, f.data, 0, f.len)
 
 proc `==`(f: FieldName; value: string): bool {.inline.} =
   result = f.len == value.len and cmpMem(f.data, readRawData(value), f.len) == 0
@@ -625,9 +632,7 @@ proc readJson*(dst: var RawJson; p: var JsonParser; unknownFields: UnknownFieldP
   p.skip()
   let start = p.pos
   p.skipValue()
-  let raw = FieldName(data: cast[ptr UncheckedArray[char]](addr p.data[start]),
-                      len: p.pos - start)
-  dst = RawJson(raw.toString())
+  captureSpan(string(dst), p.data, start, p.pos)
 
 proc reserve(w: var JsonWriter; extra: int) {.inline.} =
   let required = w.pos + extra
@@ -815,10 +820,7 @@ proc writeJson*(w: var JsonWriter; value: RawJson) =
   w.write string(value)
 
 proc finish(w: var JsonWriter): string =
-  result = ""
-  if w.pos > 0:
-    copyMem(result.beginStore(w.pos), w.data, w.pos)
-    result.endStore()
+  captureSpan(result, w.data, 0, w.pos)
 
 proc canonicalizeValue(p: var JsonParser; w: var JsonWriter) =
   case p.kind

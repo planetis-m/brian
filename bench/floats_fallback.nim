@@ -4,7 +4,7 @@ proc makePayload(): string =
   result = "["
   for index in 0..<1_000:
     if index > 0: result.add ','
-    result.add "0.5175691602819188"
+    result.add "0.5175691602819188123"
   result.add ']'
 
 let payload = makePayload()
