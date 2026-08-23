@@ -44,17 +44,17 @@ type
   CanonRawJson* = distinct string
     ## A deterministic, whitespace-free re-emission of one JSON value.
 
-proc `=destroy`(w: JsonWriter) =
+proc `=destroy`*(w: JsonWriter) =
   if w.data != nil:
     dealloc(w.data)
 
-proc `=wasMoved`(w: var JsonWriter) =
+proc `=wasMoved`*(w: var JsonWriter) =
   w.data = nil
   w.pos = 0
   w.capacity = 0
 
-proc `=copy`(dest: var JsonWriter; src: JsonWriter) {.error.}
-proc `=dup`(src: JsonWriter): JsonWriter {.error.}
+proc `=copy`*(dest: var JsonWriter; src: JsonWriter) {.error.}
+proc `=dup`*(src: JsonWriter): JsonWriter {.error.}
 
 const
   DepthLimit = 1_000
@@ -511,11 +511,11 @@ proc readJson*(dst: var bool; p: var JsonParser; unknownFields: UnknownFieldPoli
   p.readBool(dst)
 
 proc readJson*[T: SomeInteger](dst: var T; p: var JsonParser;
-                                unknownFields: UnknownFieldPolicy) =
+                               unknownFields: UnknownFieldPolicy) =
   p.readInt(dst)
 
 proc readJson*[T: SomeFloat](dst: var T; p: var JsonParser;
-                              unknownFields: UnknownFieldPolicy) =
+                             unknownFields: UnknownFieldPolicy) =
   p.readFloat(dst)
 
 proc readJson*[T: enum](dst: var T; p: var JsonParser; unknownFields: UnknownFieldPolicy) =
