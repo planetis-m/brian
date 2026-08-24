@@ -47,6 +47,19 @@ valgrind --tool=cachegrind ./objects_read_jsony
 The reader checksum is `300`; the writer checksum is `4800200`. Use the same
 payload, compiler version, and release configuration for every comparison.
 
+## Timing
+
+For a 10,000,000-object timing workload, build each target with `-d:danger`
+and `-d:Iterations=50000`, then collect 15 runs after three warmups:
+
+```sh
+nim c -d:danger -d:Iterations=50000 -o:objects_read_brian objects_read.nim
+for i in {1..3}; do taskset -c 1 ./objects_read_brian >/dev/null; done
+for i in {1..15}; do /usr/bin/time -f '%e' taskset -c 1 ./objects_read_brian >/dev/null; done
+```
+
+Repeat for each library and for `objects_write.nim`; compare medians.
+
 ## Results
 
 Measured with Cachegrind using Nim 2.3.1

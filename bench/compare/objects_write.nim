@@ -6,6 +6,8 @@
 import std/options
 import common
 
+const Iterations {.intdefine.} = 200
+
 var values = newSeq[Record](200)
 for index in 0..<values.len:
   values[index] = Record(
@@ -18,7 +20,7 @@ for index in 0..<values.len:
   )
 
 var checksum = 0
-for _ in 0..<200:
+for _ in 0..<Iterations:
   checksum += toJson(values).len
 
 echo checksum
