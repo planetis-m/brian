@@ -19,7 +19,7 @@ type
     ufSkip, ufReject
 
   FieldName = object
-    # An ephemeral object field name.  Ordinary unescaped names borrow the
+    # An ephemeral object field name. Ordinary unescaped names borrow the
     # input; escaped names borrow reader-owned scratch storage.
     data: ptr UncheckedArray[char]
     len: int
@@ -53,7 +53,7 @@ proc `=wasMoved`*(w: var JsonWriter) =
   w.pos = 0
   w.capacity = 0
 
-proc `=copy`*(dest: var JsonWriter; src: JsonWriter) {.error.}
+proc `=copy`*(dst: var JsonWriter; src: JsonWriter) {.error.}
 proc `=dup`*(src: JsonWriter): JsonWriter {.error.}
 
 const
@@ -123,8 +123,7 @@ proc addSpan(dst: var string; src: ptr UncheckedArray[char]; start, stop: int) {
       if oldLength < 8:
         endStore(dst)
 
-template captureSpan(dst: string; src: ptr UncheckedArray[char];
-                     start, stop: int) =
+template captureSpan(dst: string; src: ptr UncheckedArray[char]; start, stop: int) =
   # Stores the borrowed span [start, stop) as `dst`'s entire contents.
   let length = stop - start
   if length > 0:

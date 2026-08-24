@@ -58,9 +58,9 @@ writer runs produced checksum `4800200`.
 
 | Library | Object read | Object write |
 | --- | ---: | ---: |
-| Brian | 143,014,750 | 72,713,567 |
-| jsonx | 165,655,730 | 242,449,610 |
-| jsony | 166,315,725 | 98,750,177 |
+| Brian | 142,959,024 | 72,651,822 |
+| jsonx | 165,595,319 | 242,393,859 |
+| jsony | 166,257,224 | 98,691,626 |
 
 ### `--strings:sso`
 
