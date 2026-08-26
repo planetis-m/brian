@@ -108,7 +108,7 @@ type
 let tool = fromJson(
   """{"name":"search","schema": { "type": "object" }}""", Tool)
 
-echo string(tool.schema) # { "type": "object" }
+echo $tool.schema        # { "type": "object" }
 echo toJson(tool)        # {"name":"search","schema":{ "type": "object" }}
 ```
 
@@ -137,8 +137,7 @@ type
     of parts:
       items: seq[string]
 
-proc readJson(dst: var Content; p: var JsonParser;
-              unknownFields: UnknownFieldPolicy) =
+proc readJson(dst: var Content; p: var JsonParser; unknownFields: UnknownFieldPolicy) =
   case p.kind
   of jkString:
     dst = Content(kind: text)
@@ -201,6 +200,7 @@ be measured one dimension at a time.
 
 - `fromJson(input, T)` returns a decoded value.
 - `fromJson(input, dst)` decodes into an existing value.
+- `fromFile(path, T)` decodes a JSON file.
 - `toJson(value)` returns the encoded string.
 - `jsonItems(input, T)` iterates a top-level array.
 - `readJson(dst, parser, policy)` customizes decoding.

@@ -5,7 +5,8 @@
 ## bytes follow `std/parsejson` compatibility semantics; JSON `\\u` escapes
 ## are decoded.
 
-import std/[formatfloat, math, options, parseutils, sets, strutils, tables]
+import std/[formatfloat, math, options, parseutils, paths, sets, strutils, syncio,
+  tables]
 from std/typetraits import isNamedTuple
 
 type
@@ -43,6 +44,9 @@ type
 
   CanonRawJson* = distinct string
     ## A deterministic, whitespace-free re-emission of one JSON value.
+
+proc `$`*(value: RawJson): string {.borrow.}
+proc `$`*(value: CanonRawJson): string {.borrow.}
 
 proc `=destroy`*(w: JsonWriter) =
   if w.data != nil:
@@ -651,7 +655,7 @@ proc write*(w: var JsonWriter; value: string) {.inline.} =
   if value.len > 0:
     w.append(readRawData(value), 0, value.len)
 
-template put(w: var JsonWriter; c: char) =
+template put(w: JsonWriter; c: char) =
   w.reserve(1)
   w.data[w.pos] = c
   inc w.pos
@@ -882,6 +886,16 @@ proc fromJson*[T](input: string; typ: typedesc[T];
                   unknownFields = ufSkip): T =
   ## Decodes one complete JSON value from `input`.
   fromJson(input, result, unknownFields)
+
+proc fromFile*[T](path: Path; dst: var T;
+                  unknownFields = ufSkip) =
+  ## Decodes one complete JSON file directly into `dst`.
+  fromJson(readFile(string(path)), dst, unknownFields)
+
+proc fromFile*[T](path: Path; typ: typedesc[T];
+                  unknownFields = ufSkip): T =
+  ## Decodes one complete JSON file into `T`.
+  fromFile(path, result, unknownFields)
 
 proc toJson*[T](value: T): string =
   ## Serializes `value` directly into its final string buffer.

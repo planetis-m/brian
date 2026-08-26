@@ -104,11 +104,12 @@ block escaped_field_names:
 
 block raw_values:
   let raw = fromJson(" { \"x\" : [ 1, \"\\u03b1\" ] } ", RawJson)
+  doAssert $raw == "{ \"x\" : [ 1, \"\\u03b1\" ] }"
   doAssert string(raw) == "{ \"x\" : [ 1, \"\\u03b1\" ] }"
   doAssert toJson(raw) == string(raw)
   doAssert toJson(RawJson("not validated here")) == "not validated here"
   let canonical = fromJson(" { \"x\" : [ 1, \"\\u03b1\" ] } ", CanonRawJson)
-  doAssert string(canonical) == "{\"x\":[1,\"α\"]}"
+  doAssert $canonical == "{\"x\":[1,\"α\"]}"
   doAssert string(fromJson("{\"\":1}", CanonRawJson)) == "{\"\":1}"
   let escapedKeys = fromJson(
     """{"a\u0022b":1,"c\\d":2,"\u0001":3}""", CanonRawJson)
