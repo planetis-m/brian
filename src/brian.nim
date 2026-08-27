@@ -501,7 +501,7 @@ proc kind*(p: var JsonParser): JsonKind =
   of '-', '.', '0'..'9': result = jkNumber
   else: p.raiseParseError("expected value")
 
-proc jsonStringMatches*(p: var JsonParser; choices: openArray[string]): int {.inline.} =
+proc matchString*(p: var JsonParser; choices: openArray[string]): int {.inline.} =
   ## Consumes one JSON string and returns its matching index, or -1.
   var start = 0
   var length = 0

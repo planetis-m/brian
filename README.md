@@ -176,7 +176,7 @@ proc readJson(dst: var Page; p: var JsonParser; unknownFields: UnknownFieldPolic
     else: discard
 ```
 
-Use `p.jsonStringMatches(["first", "second"])` for the same index-based
+Use `p.matchString(["first", "second"])` for the same index-based
 dispatch over a custom string value. Custom writers can append JSON syntax with
 `w.write`, escape keys or strings with `w.escapeJson`, and delegate values back
 to `writeJson`.
@@ -221,7 +221,7 @@ be measured one dimension at a time.
 - `toJson(value)` returns the encoded string.
 - `jsonItems(input, T)` iterates a top-level array.
 - `readJson(dst, parser, policy)` customizes decoding.
-- `parser.jsonStringMatches(choices)` matches one custom string by index.
+- `parser.matchString(choices)` matches one custom string by index.
 - `parser.jsonFields(choices, policy)` iterates known custom object fields by index.
 - `writeJson(writer, value)` customizes encoding.
 - `RawJson` preserves a captured JSON representation.

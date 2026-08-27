@@ -45,7 +45,7 @@ proc readJson*(dst: var OpenObject; p: var JsonParser;
 
 proc readJson*(dst: var ResponseStatus; p: var JsonParser;
                unknownFields: UnknownFieldPolicy) =
-  case p.jsonStringMatches([
+  case p.matchString([
     "completed", "in_progress", "failed", "cancelled", "queued", "incomplete"
   ])
   of 0: dst = completed
