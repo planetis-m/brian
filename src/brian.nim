@@ -530,6 +530,14 @@ iterator jsonFields*(p: var JsonParser; choices: openArray[string];
     else:
       yield field
 
+iterator jsonFields*(p: var JsonParser): string =
+  ## Iterates an open object and leaves `p` positioned at each field value.
+  p.beginObject()
+  var first = true
+  var name: StringSpan
+  while p.nextField(first, name):
+    yield name.toString()
+
 proc skipJson*(p: var JsonParser) =
   ## Discards one JSON value, validating it without materializing it.
   p.skipValue()

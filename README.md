@@ -163,9 +163,10 @@ For hand-written closed-shape object readers, iterate indexed known fields.
 Brian skips or rejects unknown fields according to the supplied policy:
 
 ```nim
-type Page = object
-  number: int
-  status: string
+type
+  Page = object
+    number: int
+    status: string
 
 proc readJson(dst: var Page; p: var JsonParser; unknownFields: UnknownFieldPolicy) =
   for field in p.jsonFields(["number", "status"], unknownFields):

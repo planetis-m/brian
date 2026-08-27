@@ -22,6 +22,8 @@ type
   Page = object
     number: int
     status: string
+  OpenObject = object
+    fields: seq[(string, int)]
   ResponseStatus = enum
     completed, inProgress, failed, cancelled, queued, incomplete, unknown
   FailingWrite = object
@@ -33,6 +35,13 @@ proc readJson*(dst: var Page; p: var JsonParser;
     of 0: readJson(dst.number, p, unknownFields)
     of 1: readJson(dst.status, p, unknownFields)
     else: discard
+
+proc readJson*(dst: var OpenObject; p: var JsonParser;
+               unknownFields: UnknownFieldPolicy) =
+  for field in p.jsonFields:
+    var value: int
+    readJson(value, p, unknownFields)
+    dst.fields.add (field, value)
 
 proc readJson*(dst: var ResponseStatus; p: var JsonParser;
                unknownFields: UnknownFieldPolicy) =
@@ -109,6 +118,11 @@ block custom_object_and_writer:
   doAssert toJson(page) == "{\"number\":4,\"status\":\"ok\"}"
   doAssertRaises ValueError:
     discard toJson(FailingWrite())
+
+block custom_open_object:
+  var value = OpenObject(fields: @[("default", 0)])
+  fromJson("{\"one\":1,\"two\":2}", value)
+  doAssert value.fields == @[("default", 0), ("one", 1), ("two", 2)]
 
 block custom_string_matcher:
   doAssert fromJson("\"in_progress\"", ResponseStatus) == inProgress
