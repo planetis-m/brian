@@ -22,18 +22,30 @@ type
   Page = object
     number: int
     status: string
+  ResponseStatus = enum
+    completed, inProgress, failed, cancelled, queued, incomplete, unknown
   FailingWrite = object
 
 proc readJson*(dst: var Page; p: var JsonParser;
                unknownFields: UnknownFieldPolicy) =
-  for name in p.jsonFields:
-    case name
-    of "number": readJson(dst.number, p, unknownFields)
-    of "status": readJson(dst.status, p, unknownFields)
-    else:
-      if unknownFields == ufReject:
-        p.raiseParseError("expected known field, got \"" & name & "\"")
-      p.skipJson()
+  for field in p.jsonFields(["number", "status"], unknownFields):
+    case field
+    of 0: readJson(dst.number, p, unknownFields)
+    of 1: readJson(dst.status, p, unknownFields)
+    else: discard
+
+proc readJson*(dst: var ResponseStatus; p: var JsonParser;
+               unknownFields: UnknownFieldPolicy) =
+  case p.jsonStringMatches([
+    "completed", "in_progress", "failed", "cancelled", "queued", "incomplete"
+  ])
+  of 0: dst = completed
+  of 1: dst = inProgress
+  of 2: dst = failed
+  of 3: dst = cancelled
+  of 4: dst = queued
+  of 5: dst = incomplete
+  else: dst = unknown
 
 proc readJson*(dst: var Content; p: var JsonParser;
                unknownFields: UnknownFieldPolicy) =
@@ -93,9 +105,15 @@ block custom_union:
 block custom_object_and_writer:
   let page = fromJson("{\"number\":4,\"status\":\"ok\"}", Page)
   doAssert page == Page(number: 4, status: "ok")
+  doAssert fromJson("{\"number\":4,\"extra\":[1],\"status\":\"ok\"}", Page) == page
   doAssert toJson(page) == "{\"number\":4,\"status\":\"ok\"}"
   doAssertRaises ValueError:
     discard toJson(FailingWrite())
+
+block custom_string_matcher:
+  doAssert fromJson("\"in_progress\"", ResponseStatus) == inProgress
+  doAssert fromJson("\"incompl\\u0065te\"", ResponseStatus) == incomplete
+  doAssert fromJson("\"delayed\"", ResponseStatus) == unknown
 
 block escaped_field_names:
   doAssert fromJson("{\"na\\u006de\":\"x\"}", Sample).name == "x"
@@ -122,6 +140,11 @@ block field_lifetime_and_unknown_policy:
   var destination = Sample()
   doAssertRaises JsonParsingError:
     fromJson("{\"name\":\"x\",\"extra\":1}", destination, ufReject)
+  try:
+    discard fromJson("{\"number\":4,\"ex\\u0074ra\":1}", Page, ufReject)
+    doAssert false, "unknown custom fields should be rejected"
+  except JsonParsingError as error:
+    doAssert error.msg.endsWith("expected known field, got \"extra\"")
 
 block malformed_input:
   for input in ["+1", "[1,]", "{\"x\":1,}",

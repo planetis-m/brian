@@ -5,8 +5,7 @@
 ## bytes follow `std/parsejson` compatibility semantics; JSON `\\u` escapes
 ## are decoded.
 
-import std/[formatfloat, math, options, parseutils, paths, sets, strutils, syncio,
-  tables]
+import std/[formatfloat, math, options, parseutils, paths, sets, strutils, syncio, tables]
 from std/typetraits import isNamedTuple
 
 type
@@ -19,9 +18,9 @@ type
   UnknownFieldPolicy* = enum
     ufSkip, ufReject
 
-  FieldName = object
-    # An ephemeral object field name. Ordinary unescaped names borrow the
-    # input; escaped names borrow reader-owned scratch storage.
+  StringSpan = object
+    # An ephemeral parsed JSON string. Ordinary strings borrow the input;
+    # escaped strings borrow parser-owned scratch storage.
     data: ptr UncheckedArray[char]
     len: int
 
@@ -344,7 +343,7 @@ proc beginObject(p: var JsonParser) =
   inc p.pos
   inc p.depth
 
-proc nextField(p: var JsonParser; first: var bool; f: var FieldName): bool =
+proc nextField(p: var JsonParser; first: var bool; f: var StringSpan): bool =
   p.skip()
   result = true
   if first:
@@ -374,8 +373,8 @@ proc nextField(p: var JsonParser; first: var bool; f: var FieldName): bool =
     if p.pos >= p.len:
       p.raiseParseError("unterminated string")
     if p.data[p.pos] == '"':
-      f = FieldName(data: cast[ptr UncheckedArray[char]](addr p.data[start]),
-                    len: p.pos - start)
+      f = StringSpan(data: cast[ptr UncheckedArray[char]](addr p.data[start]),
+                     len: p.pos - start)
       inc p.pos
     else:
       p.pos = start - 1
@@ -383,7 +382,7 @@ proc nextField(p: var JsonParser; first: var bool; f: var FieldName): bool =
       var rawLength = 0
       var escaped = false
       p.parseString(p.scratch, rawStart, rawLength, escaped)
-      f = FieldName(data: readRawData(p.scratch), len: p.scratch.len)
+      f = StringSpan(data: readRawData(p.scratch), len: p.scratch.len)
     p.skip()
     if p.pos >= p.len or p.data[p.pos] != ':': p.raiseParseError("expected colon")
     inc p.pos
@@ -417,12 +416,17 @@ proc nextElement(p: var JsonParser; first: var bool): bool =
       p.skip()
       if p.pos < p.len and p.data[p.pos] == ']': p.raiseParseError("trailing comma in array")
 
-proc toString(f: FieldName): string =
-  # Materializes an owned copy of this ephemeral field name.
+proc toString(f: StringSpan): string =
+  # Materializes an owned copy of this ephemeral string.
   captureSpan(result, f.data, 0, f.len)
 
-proc `==`(f: FieldName; value: string): bool {.inline.} =
+proc `==`(f: StringSpan; value: string): bool {.inline.} =
   result = f.len == value.len and cmpMem(f.data, readRawData(value), f.len) == 0
+
+proc stringMatchIndex(value: StringSpan; choices: openArray[string]): int {.inline.} =
+  for index, choice in choices:
+    if value == choice: return index
+  result = -1
 
 proc skipUnicodeEscape(p: var JsonParser) {.noinline.} =
   let high = p.readHex()
@@ -480,7 +484,7 @@ proc skipValue(p: var JsonParser) =
   of '{':
     p.beginObject()
     var first = true
-    var f: FieldName
+    var f: StringSpan
     while p.nextField(first, f): p.skipValue()
   else:
     p.raiseParseError("expected value")
@@ -497,13 +501,34 @@ proc kind*(p: var JsonParser): JsonKind =
   of '-', '.', '0'..'9': result = jkNumber
   else: p.raiseParseError("expected value")
 
-iterator jsonFields*(p: var JsonParser): string =
-  ## Iterates an object and leaves `p` positioned at each field value.
+proc jsonStringMatches*(p: var JsonParser; choices: openArray[string]): int {.inline.} =
+  ## Consumes one JSON string and returns its matching index, or -1.
+  var start = 0
+  var length = 0
+  var escaped = false
+  p.parseString(p.scratch, start, length, escaped)
+  let value = if escaped:
+      StringSpan(data: readRawData(p.scratch), len: p.scratch.len)
+    else:
+      StringSpan(data: cast[ptr UncheckedArray[char]](addr p.data[start]), len: length)
+  result = stringMatchIndex(value, choices)
+
+iterator jsonFields*(p: var JsonParser; choices: openArray[string];
+                     unknownFields: UnknownFieldPolicy): int =
+  ## Iterates known object fields by their index in `choices`.
+  ##
+  ## Unknown fields are skipped or rejected according to `unknownFields`.
   p.beginObject()
   var first = true
-  var f: FieldName
-  while p.nextField(first, f):
-    yield f.toString()
+  var name: StringSpan
+  while p.nextField(first, name):
+    let field = stringMatchIndex(name, choices)
+    if field < 0:
+      if unknownFields == ufReject:
+        p.raiseParseError("expected known field, got \"" & name.toString() & "\"")
+      p.skipValue()
+    else:
+      yield field
 
 proc skipJson*(p: var JsonParser) =
   ## Discards one JSON value, validating it without materializing it.
@@ -567,7 +592,7 @@ proc readJson*[T](dst: var (Table[string, T]|OrderedTable[string, T]);
                   p: var JsonParser; unknownFields: UnknownFieldPolicy) =
   p.beginObject()
   var first = true
-  var f: FieldName
+  var f: StringSpan
   mixin readJson
   while p.nextField(first, f):
     let key = f.toString()
@@ -592,7 +617,7 @@ proc readObjectFields[T](dst: var T; p: var JsonParser;
   p.beginObject()
   mixin readJson
   var first = true
-  var f: FieldName
+  var f: StringSpan
   while p.nextField(first, f):
     var known = false
     for name, field in fieldPairs(dst):
@@ -694,7 +719,7 @@ proc escapeJson*(w: var JsonWriter; value: string) =
   ## Writes one JSON string, including quotes and required escapes.
   w.escapeJson(readRawData(value), value.len)
 
-proc escapeJson(w: var JsonWriter; f: FieldName) {.inline.} =
+proc escapeJson(w: var JsonWriter; f: StringSpan) {.inline.} =
   w.escapeJson(f.data, f.len)
 
 proc writeJson*(w: var JsonWriter; value: string) =
@@ -856,7 +881,7 @@ proc canonicalizeValue(p: var JsonParser; w: var JsonWriter) =
     w.put '{'
     var comma = false
     var first = true
-    var f: FieldName
+    var f: StringSpan
     while p.nextField(first, f):
       if comma: w.put ','
       else: comma = true

@@ -18,6 +18,8 @@ paths are intentionally kept out of the repository.
 - `strings_plain` — unescaped string fast path and destination allocation.
 - `strings_escaped` — escape decoding and Unicode escape handling.
 - `objects_known` — compile-time `fieldPairs` mapping for known object fields.
+- `custom_enums` — custom string matcher dispatch to a tolerant enum.
+- `custom_fields` — indexed custom object-field dispatch and unknown-field skipping.
 - `unknown_skip` — nested unknown object and array skipping.
 - `integers` — checked integer accumulation.
 - `arrays` — fixed-size array element traversal.

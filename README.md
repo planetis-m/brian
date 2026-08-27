@@ -159,8 +159,24 @@ let content = fromJson("[\"first\",\"second\"]", Content)
 echo toJson(content) # ["first","second"]
 ```
 
-For hand-written object readers, iterate `p.jsonFields` and call `p.skipJson()`
-for fields you choose not to decode. Custom writers can append JSON syntax with
+For hand-written closed-shape object readers, iterate indexed known fields.
+Brian skips or rejects unknown fields according to the supplied policy:
+
+```nim
+type Page = object
+  number: int
+  status: string
+
+proc readJson(dst: var Page; p: var JsonParser; unknownFields: UnknownFieldPolicy) =
+  for field in p.jsonFields(["number", "status"], unknownFields):
+    case field
+    of 0: readJson(dst.number, p, unknownFields)
+    of 1: readJson(dst.status, p, unknownFields)
+    else: discard
+```
+
+Use `p.jsonStringMatches(["first", "second"])` for the same index-based
+dispatch over a custom string value. Custom writers can append JSON syntax with
 `w.write`, escape keys or strings with `w.escapeJson`, and delegate values back
 to `writeJson`.
 
@@ -204,6 +220,8 @@ be measured one dimension at a time.
 - `toJson(value)` returns the encoded string.
 - `jsonItems(input, T)` iterates a top-level array.
 - `readJson(dst, parser, policy)` customizes decoding.
+- `parser.jsonStringMatches(choices)` matches one custom string by index.
+- `parser.jsonFields(choices, policy)` iterates known custom object fields by index.
 - `writeJson(writer, value)` customizes encoding.
 - `RawJson` preserves a captured JSON representation.
 - `CanonRawJson` produces a compact normalized representation.
