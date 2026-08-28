@@ -18,9 +18,12 @@ type
   UnknownFieldPolicy* = enum
     ufSkip, ufReject
 
-  StringSpan = object
-    # An ephemeral parsed JSON string. Ordinary strings borrow the input;
-    # escaped strings borrow parser-owned scratch storage.
+  StringSpan* = object
+    ## A borrowed parsed JSON string yielded by `jsonFields`.
+    ##
+    ## Ordinary keys borrow the JSON input and escaped keys borrow parser
+    ## scratch storage. Compare a span during the current iteration, or use
+    ## `$span` to create an owned string before retaining it.
     data: ptr UncheckedArray[char]
     len: int
 
@@ -416,17 +419,15 @@ proc nextElement(p: var JsonParser; first: var bool): bool =
       p.skip()
       if p.pos < p.len and p.data[p.pos] == ']': p.raiseParseError("trailing comma in array")
 
-proc toString(f: StringSpan): string =
-  # Materializes an owned copy of this ephemeral string.
+proc `$`*(f: StringSpan): string =
+  ## Copies this borrowed string into an owned string.
   captureSpan(result, f.data, 0, f.len)
 
-proc `==`(f: StringSpan; value: string): bool {.inline.} =
+proc `==`*(f: StringSpan; value: string): bool {.inline.} =
   result = f.len == value.len and cmpMem(f.data, readRawData(value), f.len) == 0
 
-proc stringMatchIndex(value: StringSpan; choices: openArray[string]): int {.inline.} =
-  for index, choice in choices:
-    if value == choice: return index
-  result = -1
+template `==`*(value: string; f: StringSpan): bool =
+  f == value
 
 macro genEnumRead(T: typedesc; value, dst: typed; onUnknown: untyped): untyped =
   # Generates exact comparisons against an ephemeral StringSpan. Unlike
@@ -570,30 +571,13 @@ proc readStringSpan(p: var JsonParser): StringSpan {.inline.} =
     else:
       StringSpan(data: cast[ptr UncheckedArray[char]](addr p.data[start]), len: length)
 
-iterator jsonFields*(p: var JsonParser; choices: openArray[string];
-                     unknownFields: UnknownFieldPolicy): int =
-  ## Iterates known object fields by their index in `choices`.
-  ##
-  ## Unknown fields are skipped or rejected according to `unknownFields`.
+iterator jsonFields*(p: var JsonParser): StringSpan =
+  ## Iterates borrowed object keys and leaves `p` at each field value.
   p.beginObject()
   var first = true
   var name: StringSpan
   while p.nextField(first, name):
-    let field = stringMatchIndex(name, choices)
-    if field < 0:
-      if unknownFields == ufReject:
-        p.raiseParseError("expected known field, got \"" & name.toString() & "\"")
-      p.skipValue()
-    else:
-      yield field
-
-iterator jsonFields*(p: var JsonParser): string =
-  ## Iterates an open object and leaves `p` positioned at each field value.
-  p.beginObject()
-  var first = true
-  var name: StringSpan
-  while p.nextField(first, name):
-    yield name.toString()
+    yield name
 
 proc skipJson*(p: var JsonParser) =
   ## Discards one JSON value, validating it without materializing it.
@@ -666,7 +650,7 @@ proc readJson*[T](dst: var (Table[string, T]|OrderedTable[string, T]);
   var f: StringSpan
   mixin readJson
   while p.nextField(first, f):
-    let key = f.toString()
+    let key = $f
     var value = default(T)
     readJson(value, p, unknownFields)
     dst[key] = value
@@ -698,7 +682,7 @@ proc readObjectFields[T](dst: var T; p: var JsonParser;
         break
     if not known:
       if unknownFields == ufReject:
-        p.raiseParseError("expected known field, got \"" & f.toString() & "\"")
+        p.raiseParseError("expected known field, got \"" & $f & "\"")
       p.skipValue()
 
 proc readJson*[T: tuple](dst: var T; p: var JsonParser; unknownFields: UnknownFieldPolicy) =

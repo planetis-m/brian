@@ -19,7 +19,8 @@ paths are intentionally kept out of the repository.
 - `strings_escaped` — escape decoding and Unicode escape handling.
 - `objects_known` — compile-time `fieldPairs` mapping for known object fields.
 - `custom_enums` — custom string matcher dispatch to a tolerant enum.
-- `custom_fields` — indexed custom object-field dispatch and unknown-field skipping.
+- `custom_fields` — borrowed-span custom field dispatch and unknown-field skipping.
+- `open_fields` — arbitrary keys materialized into their final destination.
 - `unknown_skip` — nested unknown object and array skipping.
 - `integers` — checked integer accumulation.
 - `arrays` — fixed-size array element traversal.

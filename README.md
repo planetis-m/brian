@@ -159,8 +159,9 @@ let content = fromJson("[\"first\",\"second\"]", Content)
 echo toJson(content) # ["first","second"]
 ```
 
-For hand-written closed-shape object readers, iterate indexed known fields.
-Brian skips or rejects unknown fields according to the supplied policy:
+Custom object readers use one iterator over borrowed `StringSpan` keys. Compare
+keys directly without allocating, and handle unknown values according to the
+supplied policy:
 
 ```nim
 type
@@ -169,12 +170,19 @@ type
     status: string
 
 proc readJson(dst: var Page; p: var JsonParser; unknownFields: UnknownFieldPolicy) =
-  for field in p.jsonFields(["number", "status"], unknownFields):
-    case field
-    of 0: readJson(dst.number, p, unknownFields)
-    of 1: readJson(dst.status, p, unknownFields)
-    else: discard
+  for field in p.jsonFields:
+    if field == "number":
+      readJson(dst.number, p, unknownFields)
+    elif field == "status":
+      readJson(dst.status, p, unknownFields)
+    elif unknownFields == ufReject:
+      p.raiseParseError("expected known field, got \"" & $field & "\"")
+    else:
+      p.skipJson()
 ```
+
+`StringSpan` is a non-owning view. Compare it during the current iteration, or
+use `$field` to create an owned string before retaining the key.
 
 Enum strings are matched exactly and case-sensitively against their Nim
 spellings, including custom spellings such as `inProgress = "in_progress"`.
@@ -234,7 +242,7 @@ be measured one dimension at a time.
 - `jsonItems(input, T)` iterates a top-level array.
 - `readJson(dst, parser, policy)` customizes decoding.
 - `readJson(dst, parser, policy, fallback)` reads an enum with an unknown-value fallback.
-- `parser.jsonFields(choices, policy)` iterates known custom object fields by index.
+- `parser.jsonFields` iterates borrowed `StringSpan` object keys.
 - `writeJson(writer, value)` customizes encoding.
 - `RawJson` preserves a captured JSON representation.
 - `CanonRawJson` produces a compact normalized representation.

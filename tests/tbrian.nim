@@ -32,18 +32,22 @@ type
 
 proc readJson*(dst: var Page; p: var JsonParser;
                unknownFields: UnknownFieldPolicy) =
-  for field in p.jsonFields(["number", "status"], unknownFields):
-    case field
-    of 0: readJson(dst.number, p, unknownFields)
-    of 1: readJson(dst.status, p, unknownFields)
-    else: discard
+  for field in p.jsonFields:
+    if field == "number":
+      readJson(dst.number, p, unknownFields)
+    elif "status" == field:
+      readJson(dst.status, p, unknownFields)
+    elif unknownFields == ufReject:
+      p.raiseParseError("expected known field, got \"" & $field & "\"")
+    else:
+      p.skipJson()
 
 proc readJson*(dst: var OpenObject; p: var JsonParser;
                unknownFields: UnknownFieldPolicy) =
   for field in p.jsonFields:
     var value: int
     readJson(value, p, unknownFields)
-    dst.fields.add (field, value)
+    dst.fields.add ($field, value)
 
 proc readJson*(dst: var ResponseStatus; p: var JsonParser;
                unknownFields: UnknownFieldPolicy) =
@@ -114,8 +118,10 @@ block custom_object_and_writer:
 
 block custom_open_object:
   var value = OpenObject(fields: @[("default", 0)])
-  fromJson("{\"one\":1,\"two\":2}", value)
-  doAssert value.fields == @[("default", 0), ("one", 1), ("two", 2)]
+  fromJson("{\"one\":1,\"t\\u0077o\":2,\"\":3}", value)
+  doAssert value.fields == @[
+    ("default", 0), ("one", 1), ("two", 2), ("", 3)
+  ]
 
 block custom_enum_fallback:
   doAssert fromJson("\"in_progress\"", ResponseStatus) == inProgress
