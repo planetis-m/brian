@@ -176,10 +176,22 @@ proc readJson(dst: var Page; p: var JsonParser; unknownFields: UnknownFieldPolic
     else: discard
 ```
 
-Use `p.matchString(["first", "second"])` for the same index-based
-dispatch over a custom string value. Custom writers can append JSON syntax with
-`w.write`, escape keys or strings with `w.escapeJson`, and delegate values back
-to `writeJson`.
+Enum strings are matched exactly and case-sensitively against their Nim
+spellings, including custom spellings such as `inProgress = "in_progress"`.
+A tolerant custom reader can select an explicit fallback without duplicating
+the enum mapping:
+
+```nim
+type ResponseStatus = enum
+  completed, inProgress = "in_progress", unknown
+
+proc readJson(dst: var ResponseStatus; p: var JsonParser;
+              unknownFields: UnknownFieldPolicy) =
+  readJson(dst, p, unknownFields, unknown)
+```
+
+Custom writers can append JSON syntax with `w.write`, escape keys or strings
+with `w.escapeJson`, and delegate values back to `writeJson`.
 
 ## Supported mappings
 
@@ -221,7 +233,7 @@ be measured one dimension at a time.
 - `toJson(value)` returns the encoded string.
 - `jsonItems(input, T)` iterates a top-level array.
 - `readJson(dst, parser, policy)` customizes decoding.
-- `parser.matchString(choices)` matches one custom string by index.
+- `readJson(dst, parser, policy, fallback)` reads an enum with an unknown-value fallback.
 - `parser.jsonFields(choices, policy)` iterates known custom object fields by index.
 - `writeJson(writer, value)` customizes encoding.
 - `RawJson` preserves a captured JSON representation.

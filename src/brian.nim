@@ -5,7 +5,7 @@
 ## bytes follow `std/parsejson` compatibility semantics; JSON `\\u` escapes
 ## are decoded.
 
-import std/[formatfloat, math, options, parseutils, paths, sets, strutils, syncio, tables]
+import std/[formatfloat, macros, math, options, parseutils, paths, sets, syncio, tables]
 from std/typetraits import isNamedTuple
 
 type
@@ -428,6 +428,65 @@ proc stringMatchIndex(value: StringSpan; choices: openArray[string]): int {.inli
     if value == choice: return index
   result = -1
 
+macro genEnumRead(T: typedesc; value, dst: typed; onUnknown: untyped): untyped =
+  # Generates exact comparisons against an ephemeral StringSpan. Unlike
+  # std/enumutils.genEnumCaseStmt, this deliberately performs no normalization:
+  # normalizing would require materializing a temporary string.
+  let enumType = T.getTypeInst[1]
+  let enumSymbol = enumType.getTypeImpl.getTypeInst
+  let enumImpl = enumSymbol.getImpl[2]
+  expectKind enumImpl, nnkEnumTy
+
+  var fields: seq[tuple[name, spelling: string]]
+  for field in enumImpl:
+    if field.kind != nnkEmpty:
+      var name, spelling: string
+      case field.kind
+      of nnkSym, nnkIdent:
+        name = field.strVal
+        spelling = name
+      of nnkAccQuoted:
+        for part in field:
+          name.add part.strVal
+        spelling = name
+      of nnkEnumFieldDef:
+        name = field[0].strVal
+        case field[1].kind
+        of nnkStrLit..nnkTripleStrLit:
+          spelling = field[1].strVal
+        of nnkTupleConstr:
+          spelling = field[1][1].strVal
+        of nnkIntLit:
+          spelling = name
+        else:
+          let fieldImpl = field[0].getImpl
+          if fieldImpl.kind in {nnkStrLit..nnkTripleStrLit}:
+            spelling = fieldImpl.strVal
+          else:
+            error("invalid enum field value", field[1])
+      else:
+        error("invalid node in enum type", field)
+      for previous in fields:
+        if previous.spelling == spelling:
+          error("ambiguous enum spelling: " & spelling, field)
+      fields.add (name, spelling)
+
+  result = nnkCaseStmt.newTree(newDotExpr(value, ident"len"))
+  var lengths: seq[int]
+  for field in fields:
+    if field.spelling.len notin lengths:
+      lengths.add field.spelling.len
+  for length in lengths:
+    var matches = nnkIfStmt.newTree()
+    for field in fields:
+      if field.spelling.len == length:
+        let condition = newCall(bindSym"==", value, newLit(field.spelling))
+        let assignment = newAssignment(dst, newDotExpr(enumType, ident(field.name)))
+        matches.add nnkElifBranch.newTree(condition, assignment)
+    matches.add nnkElse.newTree(onUnknown.copyNimTree)
+    result.add nnkOfBranch.newTree(newLit(length), matches)
+  result.add nnkElse.newTree(onUnknown.copyNimTree)
+
 proc skipUnicodeEscape(p: var JsonParser) {.noinline.} =
   let high = p.readHex()
   if high in 0xd800..0xdbff:
@@ -501,17 +560,15 @@ proc kind*(p: var JsonParser): JsonKind =
   of '-', '.', '0'..'9': result = jkNumber
   else: p.raiseParseError("expected value")
 
-proc matchString*(p: var JsonParser; choices: openArray[string]): int {.inline.} =
-  ## Consumes one JSON string and returns its matching index, or -1.
+proc readStringSpan(p: var JsonParser): StringSpan {.inline.} =
   var start = 0
   var length = 0
   var escaped = false
   p.parseString(p.scratch, start, length, escaped)
-  let value = if escaped:
+  result = if escaped:
       StringSpan(data: readRawData(p.scratch), len: p.scratch.len)
     else:
       StringSpan(data: cast[ptr UncheckedArray[char]](addr p.data[start]), len: length)
-  result = stringMatchIndex(value, choices)
 
 iterator jsonFields*(p: var JsonParser; choices: openArray[string];
                      unknownFields: UnknownFieldPolicy): int =
@@ -561,13 +618,19 @@ proc readJson*[T: SomeFloat](dst: var T; p: var JsonParser;
                              unknownFields: UnknownFieldPolicy) =
   p.readFloat(dst)
 
-proc readJson*[T: enum](dst: var T; p: var JsonParser; unknownFields: UnknownFieldPolicy) =
-  var value: string
-  p.readString(value)
-  try:
-    dst = parseEnum[T](value)
-  except ValueError:
+proc readJson*[T: enum](dst: var T; p: var JsonParser;
+                        unknownFields: UnknownFieldPolicy) {.inline.} =
+  let value = p.readStringSpan()
+  genEnumRead(T, value, dst):
     p.raiseParseError("expected a valid " & $T)
+
+proc readJson*[T: enum](dst: var T; p: var JsonParser;
+                        unknownFields: UnknownFieldPolicy; fallback: T) {.inline.} =
+  ## Reads an enum using its exact JSON spelling, or stores `fallback` when the
+  ## input string is unknown.
+  let value = p.readStringSpan()
+  genEnumRead(T, value, dst):
+    dst = fallback
 
 proc readJson*[T](dst: var Option[T]; p: var JsonParser; unknownFields: UnknownFieldPolicy) =
   if p.consumeNull():

@@ -25,7 +25,9 @@ type
   OpenObject = object
     fields: seq[(string, int)]
   ResponseStatus = enum
-    completed, inProgress, failed, cancelled, queued, incomplete, unknown
+    completed, inProgress = "in_progress", failed, cancelled, queued, incomplete, unknown
+  WireStatus = enum
+    ready = "wire_ready", stopped
   FailingWrite = object
 
 proc readJson*(dst: var Page; p: var JsonParser;
@@ -45,16 +47,7 @@ proc readJson*(dst: var OpenObject; p: var JsonParser;
 
 proc readJson*(dst: var ResponseStatus; p: var JsonParser;
                unknownFields: UnknownFieldPolicy) =
-  case p.matchString([
-    "completed", "in_progress", "failed", "cancelled", "queued", "incomplete"
-  ])
-  of 0: dst = completed
-  of 1: dst = inProgress
-  of 2: dst = failed
-  of 3: dst = cancelled
-  of 4: dst = queued
-  of 5: dst = incomplete
-  else: dst = unknown
+  readJson(dst, p, unknownFields, unknown)
 
 proc readJson*(dst: var Content; p: var JsonParser;
                unknownFields: UnknownFieldPolicy) =
@@ -124,10 +117,17 @@ block custom_open_object:
   fromJson("{\"one\":1,\"two\":2}", value)
   doAssert value.fields == @[("default", 0), ("one", 1), ("two", 2)]
 
-block custom_string_matcher:
+block custom_enum_fallback:
   doAssert fromJson("\"in_progress\"", ResponseStatus) == inProgress
   doAssert fromJson("\"incompl\\u0065te\"", ResponseStatus) == incomplete
   doAssert fromJson("\"delayed\"", ResponseStatus) == unknown
+  doAssert toJson(inProgress) == "\"in_progress\""
+
+block strict_enum:
+  doAssert fromJson("\"wire_ready\"", WireStatus) == ready
+  doAssert fromJson("\"wire\\u005fready\"", WireStatus) == ready
+  doAssertRaises JsonParsingError:
+    discard fromJson("\"Wire_Ready\"", WireStatus)
 
 block escaped_field_names:
   doAssert fromJson("{\"na\\u006de\":\"x\"}", Sample).name == "x"
