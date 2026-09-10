@@ -1,16 +1,14 @@
-## A direct, typed JSON reader and writer.
+## Typed JSON decoding and encoding for Nim values.
 ##
-## `brian` decodes JSON directly into Nim values.  It does not build a DOM or
-## tokenize scalar values before their destination type is known. Raw string
-## bytes follow `std/parsejson` compatibility semantics; JSON `\\u` escapes
-## are decoded.
+## Use `fromJson` and `toJson` for ordinary values. Custom types can provide
+## `readJson` and `writeJson` overloads.
 
 import std/[formatfloat, macros, math, options, parseutils, paths, sets, syncio, tables]
 from std/typetraits import isNamedTuple
 
 type
   JsonParsingError* = object of ValueError
-    ## Raised for malformed JSON and JSON values that do not fit their target type.
+    ## Raised when JSON is malformed or cannot be decoded as the requested type.
 
   JsonKind* = enum
     jkNull, jkBool, jkNumber, jkString, jkArray, jkObject
@@ -19,16 +17,15 @@ type
     ufSkip, ufReject
 
   StringSpan* = object
-    ## A borrowed parsed JSON string yielded by `jsonFields`.
+    ## A borrowed decoded object-field name yielded by `jsonFields`.
     ##
-    ## Ordinary keys borrow the JSON input and escaped keys borrow parser
-    ## scratch storage. Compare a span during the current iteration, or use
-    ## `$span` to create an owned string before retaining it.
+    ## Compare it during the current iteration, or use `$span` to make an owned
+    ## string before retaining it.
     data: ptr UncheckedArray[char]
     len: int
 
   JsonParser* = object
-    ## Cursor state supplied to custom `readJson` overloads.
+    ## Parses JSON for custom `readJson` overloads.
     data: ptr UncheckedArray[char]
     len: int
     pos: int
@@ -36,16 +33,21 @@ type
     scratch: string
 
   JsonWriter* = object
-    ## Output sink supplied to custom `writeJson` overloads.
+    ## Writes JSON for custom `writeJson` overloads.
     data: ptr UncheckedArray[char]
     pos: int
     capacity: int
 
   RawJson* = distinct string
-    ## Trusted bytes representing one JSON value.
+    ## A JSON value emitted without parsing, quoting, or escaping.
+    ##
+    ## Values read into `RawJson` are validated. When constructing one manually,
+    ## provide exactly one valid JSON value.
 
   CanonRawJson* = distinct string
-    ## A deterministic, whitespace-free re-emission of one JSON value.
+    ## A JSON value rewritten without insignificant whitespace.
+    ##
+    ## Object field order and number spellings are preserved.
 
 proc `$`*(value: RawJson): string {.borrow.}
 proc `$`*(value: CanonRawJson): string {.borrow.}
@@ -137,6 +139,16 @@ template captureSpan(dst: string; src: ptr UncheckedArray[char]; start, stop: in
       copyMem(beginStore(dst, length), addr src[start], length)
       endStore(dst)
 
+template scanStringRun(p: JsonParser) =
+  # Advances `p` over the next run of bytes that are neither `"` nor `\`.
+  # The cursor lives in a local so the code generator keeps it in a register.
+  let data = p.data
+  let len = p.len
+  var pos = p.pos
+  while pos < len and data[pos] notin {'"', '\\'}:
+    inc pos
+  p.pos = pos
+
 proc parseString(p: var JsonParser; dst: var string; rawStart: var int;
                  rawLength: var int; hadEscape: var bool) =
   p.skip()
@@ -146,8 +158,7 @@ proc parseString(p: var JsonParser; dst: var string; rawStart: var int;
   rawStart = p.pos
   var runStart = p.pos
   while p.pos < p.len:
-    while p.pos < p.len and p.data[p.pos] notin {'"', '\\'}:
-      inc p.pos
+    scanStringRun(p)
     if p.pos >= p.len:
       break
     case p.data[p.pos]
@@ -247,26 +258,28 @@ proc scanNumber(p: var JsonParser): int =
 
 proc readInt[T: SomeInteger](p: var JsonParser; dst: var T) =
   p.skip()
+  let data = p.data
+  let len = p.len
   var negative = false
-  if p.pos < p.len and p.data[p.pos] == '-':
+  if p.pos < len and data[p.pos] == '-':
     negative = true
     inc p.pos
-  if p.pos >= p.len: p.raiseParseError("incomplete integer")
+  if p.pos >= len: p.raiseParseError("incomplete integer")
   let limit =
     when T is SomeUnsignedInt:
       uint64(high(T))
     else:
       uint64(high(T)) + uint64(ord(negative))
   var value = 0'u64
-  if p.data[p.pos] notin {'0'..'9'}:
+  if data[p.pos] notin {'0'..'9'}:
     p.raiseParseError("expected digit")
-  while p.pos < p.len and p.data[p.pos] in {'0'..'9'}:
-    let digit = uint64(ord(p.data[p.pos]) - ord('0'))
+  while p.pos < len and data[p.pos] in {'0'..'9'}:
+    let digit = uint64(ord(data[p.pos]) - ord('0'))
     if value > (limit - digit) div 10'u64:
       p.raiseParseError("integer overflow")
     value = value * 10'u64 + digit
     inc p.pos
-  if p.pos < p.len and p.data[p.pos] in {'.', 'e', 'E'}:
+  if p.pos < len and data[p.pos] in {'.', 'e', 'E'}:
     p.raiseParseError("expected integer")
   when T is SomeUnsignedInt:
     if negative and value != 0:
@@ -284,36 +297,37 @@ proc readInt[T: SomeInteger](p: var JsonParser; dst: var T) =
 proc readFloat[T: SomeFloat](p: var JsonParser; dst: var T) =
   # Uses a small exact fast path and the stdlib converter for difficult values.
   p.skip()
+  let data = p.data
   let start = p.pos
-  if p.pos < p.len and p.data[p.pos] == '-': inc p.pos
+  if p.pos < p.len and data[p.pos] == '-': inc p.pos
   if p.pos >= p.len: p.raiseParseError("incomplete number")
   var significand = 0'u64
   var storedDigits = 0
   var fractionDigits = 0
   template addDigit() =
-    let digit = uint64(ord(p.data[p.pos]) - ord('0'))
+    let digit = uint64(ord(data[p.pos]) - ord('0'))
     if significand != 0 or digit != 0:
       if storedDigits < 19:
         significand = significand * 10'u64 + digit
         inc storedDigits
     inc p.pos
-  while p.pos < p.len and p.data[p.pos] in {'0'..'9'}: addDigit()
-  if p.pos < p.len and p.data[p.pos] == '.':
+  while p.pos < p.len and data[p.pos] in {'0'..'9'}: addDigit()
+  if p.pos < p.len and data[p.pos] == '.':
     inc p.pos
-    while p.pos < p.len and p.data[p.pos] in {'0'..'9'}:
+    while p.pos < p.len and data[p.pos] in {'0'..'9'}:
       addDigit()
       if fractionDigits < 100000: inc fractionDigits
   var exponent = 0
-  if p.pos < p.len and p.data[p.pos] in {'e', 'E'}:
+  if p.pos < p.len and data[p.pos] in {'e', 'E'}:
     inc p.pos
     var exponentNegative = false
-    if p.pos < p.len and p.data[p.pos] in {'+', '-'}:
-      exponentNegative = p.data[p.pos] == '-'
+    if p.pos < p.len and data[p.pos] in {'+', '-'}:
+      exponentNegative = data[p.pos] == '-'
       inc p.pos
     let exponentStart = p.pos
-    while p.pos < p.len and p.data[p.pos] in {'0'..'9'}:
+    while p.pos < p.len and data[p.pos] in {'0'..'9'}:
       if exponent < 100000:
-        exponent = exponent * 10 + ord(p.data[p.pos]) - ord('0')
+        exponent = exponent * 10 + ord(data[p.pos]) - ord('0')
         if exponent > 100000: exponent = 100000
       inc p.pos
     if p.pos == exponentStart: p.raiseParseError("missing exponent digits")
@@ -321,7 +335,7 @@ proc readFloat[T: SomeFloat](p: var JsonParser; dst: var T) =
   let decimalExponent = exponent - fractionDigits
   var value = 0.0
   if significand == 0:
-    value = if p.data[start] == '-': -0.0 else: 0.0
+    value = if data[start] == '-': -0.0 else: 0.0
   # Every stored 19-digit significand exceeds the exact-integer threshold and
   # therefore takes the stdlib fallback below.
   elif significand < (1'u64 shl 53) and decimalExponent in -22..22:
@@ -330,10 +344,10 @@ proc readFloat[T: SomeFloat](p: var JsonParser; dst: var T) =
       value /= DecimalPowers[-decimalExponent]
     else:
       value *= DecimalPowers[decimalExponent]
-    if p.data[start] == '-': value = -value
+    if data[start] == '-': value = -value
   else:
     var token: string
-    captureSpan(token, p.data, start, p.pos)
+    captureSpan(token, data, start, p.pos)
     let consumed = parseutils.parseFloat(token, value)
     if consumed != token.len: p.raiseParseError("invalid number")
   dst = T(value)
@@ -371,8 +385,7 @@ proc nextField(p: var JsonParser; first: var bool; f: var StringSpan): bool =
       p.raiseParseError("expected string")
     inc p.pos
     let start = p.pos
-    while p.pos < p.len and p.data[p.pos] notin {'"', '\\'}:
-      inc p.pos
+    scanStringRun(p)
     if p.pos >= p.len:
       p.raiseParseError("unterminated string")
     if p.data[p.pos] == '"':
@@ -420,7 +433,7 @@ proc nextElement(p: var JsonParser; first: var bool): bool =
       if p.pos < p.len and p.data[p.pos] == ']': p.raiseParseError("trailing comma in array")
 
 proc `$`*(f: StringSpan): string =
-  ## Copies this borrowed string into an owned string.
+  ## Returns an owned copy of this field name.
   captureSpan(result, f.data, 0, f.len)
 
 proc `==`*(f: StringSpan; value: string): bool {.inline.} =
@@ -430,9 +443,7 @@ template `==`*(value: string; f: StringSpan): bool =
   f == value
 
 macro genEnumRead(T: typedesc; value, dst: typed; onUnknown: untyped): untyped =
-  # Generates exact comparisons against an ephemeral StringSpan. Unlike
-  # std/enumutils.genEnumCaseStmt, this deliberately performs no normalization:
-  # normalizing would require materializing a temporary string.
+  # Generates exact comparisons against an ephemeral StringSpan.
   let enumType = T.getTypeInst[1]
   let enumSymbol = enumType.getTypeImpl.getTypeInst
   let enumImpl = enumSymbol.getImpl[2]
@@ -502,8 +513,7 @@ proc skipString(p: var JsonParser) =
   if p.pos >= p.len or p.data[p.pos] != '"': p.raiseParseError("expected string")
   inc p.pos
   while p.pos < p.len:
-    while p.pos < p.len and p.data[p.pos] notin {'"', '\\'}:
-      inc p.pos
+    scanStringRun(p)
     if p.pos >= p.len:
       break
     case p.data[p.pos]
@@ -550,6 +560,7 @@ proc skipValue(p: var JsonParser) =
     p.raiseParseError("expected value")
 
 proc kind*(p: var JsonParser): JsonKind =
+  ## Returns the kind of the next JSON value without consuming it.
   p.skip()
   if p.pos >= p.len: p.raiseParseError("expected value")
   case p.data[p.pos]
@@ -572,7 +583,9 @@ proc readStringSpan(p: var JsonParser): StringSpan {.inline.} =
       StringSpan(data: cast[ptr UncheckedArray[char]](addr p.data[start]), len: length)
 
 iterator jsonFields*(p: var JsonParser): StringSpan =
-  ## Iterates borrowed object keys and leaves `p` at each field value.
+  ## Iterates object-field names and leaves `p` at the corresponding value.
+  ##
+  ## Each name is borrowed and remains valid only during the current iteration.
   p.beginObject()
   var first = true
   var name: StringSpan
@@ -580,7 +593,7 @@ iterator jsonFields*(p: var JsonParser): StringSpan =
     yield name
 
 proc skipJson*(p: var JsonParser) =
-  ## Discards one JSON value, validating it without materializing it.
+  ## Consumes and validates one JSON value.
   p.skipValue()
 
 proc finish(p: var JsonParser) =
@@ -731,7 +744,9 @@ proc append(w: var JsonWriter; src: ptr UncheckedArray[char]; start, len: int) {
     inc w.pos, len
 
 proc write*(w: var JsonWriter; value: string) {.inline.} =
-  ## Appends raw JSON syntax from a custom serializer.
+  ## Appends raw JSON syntax without validation or escaping.
+  ##
+  ## `value` must contain valid JSON syntax in the current output context.
   if value.len > 0:
     w.append(readRawData(value), 0, value.len)
 
@@ -956,7 +971,7 @@ proc writeJson*(w: var JsonWriter; value: CanonRawJson) =
 
 proc fromJson*[T](input: string; dst: var T;
                   unknownFields = ufSkip) =
-  ## Decodes one complete JSON value directly into `dst`.
+  ## Decodes one complete JSON value into `dst`.
   var reader = JsonParser(data: readRawData(input), len: input.len)
   mixin readJson
   readJson(dst, reader, unknownFields)
@@ -978,7 +993,7 @@ proc fromFile*[T](path: Path; typ: typedesc[T];
   fromFile(path, result, unknownFields)
 
 proc toJson*[T](value: T): string =
-  ## Serializes `value` directly into its final string buffer.
+  ## Serializes `value` as JSON.
   var writer = JsonWriter()
   mixin writeJson
   writeJson(writer, value)
@@ -986,7 +1001,7 @@ proc toJson*[T](value: T): string =
 
 iterator jsonItems*[T](input: string; typ: typedesc[T];
                        unknownFields = ufSkip): T =
-  ## Decodes the elements of one top-level JSON array lazily.
+  ## Iterates the values in one top-level JSON array.
   var reader = JsonParser(data: readRawData(input), len: input.len)
   reader.beginArray()
   var first = true
