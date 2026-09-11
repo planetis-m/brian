@@ -222,9 +222,9 @@ Cachegrind instructions (`-d:release -g`) and times
 
 | Library | Read (CG) | Write (CG) | Read 2M | Write 10M |
 | --- | ---: | ---: | ---: | ---: |
-| Brian | 142.96M | 72.65M | 0.46 s | 0.56 s |
-| jsonx | 165.60M | 242.39M | 0.70 s | 2.52 s |
-| jsony | 166.26M | 98.69M | 0.70 s | 0.85 s |
+| Brian | 131.25M | 72.69M | 0.43 s | 0.57 s |
+| jsonx | 165.64M | 242.43M | 0.70 s | 2.51 s |
+| jsony | 166.30M | 98.73M | 0.70 s | 0.82 s |
 
 Lower is better.
 

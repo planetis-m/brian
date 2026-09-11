@@ -71,16 +71,16 @@ writer runs produced checksum `4800200`.
 
 | Library | Object read | Object write |
 | --- | ---: | ---: |
-| Brian | 142,959,024 | 72,651,822 |
-| jsonx | 165,595,319 | 242,393,859 |
-| jsony | 166,257,224 | 98,691,626 |
+| Brian | 131,245,267 | 72,692,163 |
+| jsonx | 165,635,601 | 242,434,140 |
+| jsony | 166,297,565 | 98,731,967 |
 
 ### `--strings:sso`
 
 | Library | Object read | Object write |
 | --- | ---: | ---: |
-| Brian | 110,229,386 | 74,709,176 |
-| jsony | 142,630,368 | 141,576,233 |
+| Brian | 103,251,842 | 74,687,800 |
+| jsony | 142,612,312 | 141,558,057 |
 
 jsonx is not listed because its `streams.nim` does not compile with
 `--strings:sso` on this Nim version (`expression has no address`).
