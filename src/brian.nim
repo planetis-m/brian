@@ -3,7 +3,7 @@
 ## Use `fromJson` and `toJson` for ordinary values. Custom types can provide
 ## `readJson` and `writeJson` overloads.
 
-import std/[bitops, formatfloat, macros, math, options, parseutils, paths, sets, syncio, tables]
+import std/[formatfloat, macros, math, options, parseutils, paths, sets, syncio, tables]
 from std/typetraits import isNamedTuple
 
 type
@@ -294,65 +294,8 @@ proc readInt[T: SomeInteger](p: var JsonParser; dst: var T) =
     else:
       dst = T(value)
 
-include brian_float_powers
-
-proc multiplyWide(a, b: uint64): tuple[hi, lo: uint64] {.inline.} =
-  when (defined(gcc) or defined(clang)) and sizeof(pointer) == 8 and
-      not defined(brianPortableMultiply):
-    {.emit: """
-    __uint128_t product = (__uint128_t)`a` * (__uint128_t)`b`;
-    `result`.Field0 = (NU64)(product >> 64);
-    `result`.Field1 = (NU64)product;
-    """.}
-  else:
-    const Mask = 0xffffffff'u64
-    let aLow = a and Mask
-    let bLow = b and Mask
-    let aHigh = a shr 32
-    let bHigh = b shr 32
-    let low = aLow * bLow
-    let middle = aHigh * bLow + (low shr 32)
-    let carry = (middle and Mask) + aLow * bHigh
-    result.lo = (carry shl 32) or (low and Mask)
-    result.hi = aHigh * bHigh + (middle shr 32) + (carry shr 32)
-
-proc decimalFloat(significand: uint64; exponent: int; value: var float64): bool =
-  # Eisel-Lemire-style cached-power multiplication, with conservative fallback
-  # at rounding boundaries. The caller supplies a nonzero, complete significand.
-  if exponent notin low(FloatPowers)..high(FloatPowers): return false
-  let power = FloatPowers[exponent]
-  let shift = countLeadingZeroBits(significand)
-  let normalized = significand shl shift
-  var product = multiplyWide(normalized, power.hi)
-  let tail = multiplyWide(normalized, power.lo)
-  product.lo += tail.hi
-  if product.lo < tail.hi: inc product.hi
-  # The cached power is rounded down with error < 1. Discarding the low
-  # product word adds error < 1, so the exact scaled product is in [P, P+2).
-  # P is the 128-bit pair above; its top bit is at position 126 or 127.
-  let upper = int(product.hi shr 63)
-  let discarded = 10 + upper
-  let mask = (1'u64 shl discarded) - 1
-  let halfway = 1'u64 shl (discarded - 1)
-  let remainder = product.hi and mask
-  if (remainder == halfway and product.lo == 0) or
-      (remainder == halfway - 1 and product.lo >= high(uint64) - 1):
-    return false
-  var mantissa = product.hi shr discarded
-  if remainder >= halfway: inc mantissa
-  # P represents significand * 10^exponent * 2^(shift - power.exponent - 64).
-  var binaryExponent = power.exponent + 190 + upper - shift + 1023
-  if mantissa == (1'u64 shl 53):
-    mantissa = mantissa shr 1
-    inc binaryExponent
-  # Leave subnormal rounding and overflow to the existing exact converter.
-  if binaryExponent <= 0 or binaryExponent >= 2047: return false
-  value = cast[float64]((uint64(binaryExponent) shl 52) or
-    (mantissa and ((1'u64 shl 52) - 1)))
-  result = true
-
 proc readFloat[T: SomeFloat](p: var JsonParser; dst: var T) =
-  # Keeps the small exact path, then cached powers, then the stdlib fallback.
+  # Uses a small exact fast path and the stdlib converter for difficult values.
   p.skip()
   let data = p.data
   let start = p.pos
@@ -367,8 +310,6 @@ proc readFloat[T: SomeFloat](p: var JsonParser; dst: var T) =
       if storedDigits < 19:
         significand = significand * 10'u64 + digit
         inc storedDigits
-      else:
-        storedDigits = 20
     inc p.pos
   while p.pos < p.len and data[p.pos] in {'0'..'9'}: addDigit()
   if p.pos < p.len and data[p.pos] == '.':
@@ -395,18 +336,14 @@ proc readFloat[T: SomeFloat](p: var JsonParser; dst: var T) =
   var value = 0.0
   if significand == 0:
     value = if data[start] == '-': -0.0 else: 0.0
-  # Stored 19-digit significands exceed the exact-integer threshold.
+  # Every stored 19-digit significand exceeds the exact-integer threshold and
+  # therefore takes the stdlib fallback below.
   elif significand < (1'u64 shl 53) and decimalExponent in -22..22:
     value = float64(significand)
     if decimalExponent < 0:
       value /= DecimalPowers[-decimalExponent]
     else:
       value *= DecimalPowers[decimalExponent]
-    if data[start] == '-': value = -value
-  # Long spellings keep the stdlib's bounded-buffer behavior. This also keeps
-  # saturated fraction/exponent counters out of cached-power conversion.
-  elif storedDigits <= 19 and p.pos - start <= 64 and
-      decimalFloat(significand, decimalExponent, value):
     if data[start] == '-': value = -value
   else:
     var token: string
