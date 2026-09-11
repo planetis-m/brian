@@ -20,6 +20,10 @@ without building a JSON DOM or scalar token objects.
 
 ## Install
 
+Requires a Nim 2.3.1 development compiler with `beginStore`/`endStore` support.
+Tested with compiler revision `c87926dadf4b2b3a9f274b607a61d2532b9e05b9`;
+stable Nim 2.2.12 is not supported.
+
 Add Brian to your `.nimble` file:
 
 ```nim

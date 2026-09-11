@@ -4,4 +4,4 @@ description = "A direct, typed JSON reader and writer for Nim"
 license = "MIT"
 srcDir = "src"
 
-requires "nim >= 2.2.0"
+requires "nim >= 2.3.1"
