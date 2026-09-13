@@ -1,15 +1,18 @@
 # Float conversion coverage audit
 
-This audit compares the one-word cached-power product (`d01ccc0`: one 64-bit
-power word and one wide multiply) with the two-word product that is now the
-final implementation. Both retain `readFloat`'s single `tryFastFloat`/stdlib
-fork and the same numeric grammar; only the cached-power interval test differs.
+This records the audit that chose the two-word cached-power product over the
+one-word product (`d01ccc0`). Both keep `readFloat`'s single
+`tryFastFloat`/stdlib fork and the same numeric grammar; only the cached-power
+interval test differs.
 
 The one-word table was `array[-342..308, uint64]` (5,208 bytes, 64-bit powers).
 The two-word table is `array[-342..308, tuple[hi, lo: uint64]]` (10,416 bytes,
-128-bit powers). `tools/generate_float_powers.py` reproduces the committed
-two-word array; `bench/float_coverage.py` reconstructs the one-word candidate in
-its output directory and never edits production source.
+128-bit powers). The conversion lives in `src/brian_float.nim` and imports the
+generated `src/brian_float_powers.nim`.
+
+`bench/float_coverage.py` now generates the corpora and verifies the production
+reader only. The one-word reconstruction used for this audit was removed once
+the decision was made; it remains available in git at `d01ccc0` and `07d7c00`.
 
 ## Method
 
@@ -19,11 +22,10 @@ From the repository root:
 python3 bench/float_coverage.py /tmp/brian-coverage
 ```
 
-The script writes the corpora below, then for each variant (`one_word`,
-`two_word`):
+The script writes the corpora below, then:
 
 1. builds a probe against the corpora with `-d:brianFloatVerify -d:release
-   --mm:arc -d:useMalloc --threads:on --skipParentCfg:on`;
+   --mm:arc -d:useMalloc --threads:on --skipParentCfg:on --path:src`;
 2. runs every corpus, asserting each parsed binary64 equals the bit pattern
    recorded for the random corpora and, for every corpus, equals both
    `std/parseutils.parseFloat` and `std/json.parseJson`;
@@ -31,10 +33,8 @@ The script writes the corpora below, then for each variant (`one_word`,
    `CACHEGRIND_START_INSTRUMENTATION`/`STOP`, and runs each corpus under
    Cachegrind with `--cache-sim=no --branch-sim=no --instr-at-start=no`.
 
-The absolute include in the generated probe prevents an ancestor `nim.cfg` from
-silently loading production source for both variants. Both builds use the same
-flags, so per-corpus counts are comparable. Instruction counts, not wall clock,
-drive the decision.
+`tests/arm32-corpus.sh` reuses the same corpora and probe for the 32-bit ARM
+cross-check. Instruction counts, not wall clock, drive float decisions.
 
 ## Corpora
 
@@ -56,13 +56,14 @@ sidecars for the two uniform corpora record the exact expected binary64 words.
 
 ## Bit verification
 
-Every value in every corpus matched `parseutils.parseFloat`, `std/json`
-`parseJson` and, where a `.bits` sidecar exists, the recorded bit pattern, for
-both variants. The two probe runs exited zero with identical per-corpus
-checksums. No input was found where the one-word product returns different
-bits; its regression is coverage and throughput, not observed wrong results.
+Every value in the generated corpora is compared by the probe against
+`parseutils.parseFloat`, `std/json.parseJson` and, where a `.bits` sidecar
+exists, the recorded bit pattern. In the original one-word versus two-word
+audit both variants passed on all 697,852 values with identical checksums; no
+input was found where the one-word product returned different bits, so its
+regression was coverage and throughput, not observed wrong results.
 
-## Instruction counts
+## Instruction counts (historical one-word versus two-word audit)
 
 Cachegrind `I refs` for the instrumented parse loop, one-word then two-word:
 

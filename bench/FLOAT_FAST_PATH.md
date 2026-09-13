@@ -8,9 +8,11 @@ below remain as experiment history.
 
 `readFloat` scans digits once and makes one `tryFastFloat`/stdlib decision.
 The private helper owns signed zero, exact small-number scaling, cached-power
-rounding and the decision to fall back. The digit loop uses a `10^18` threshold
-and an explicit `complete` flag, eliminating both the digit counter and its
-old `20` sentinel. Grammar, public API and runtime dependencies are unchanged.
+rounding and the decision to fall back; it lives in `src/brian_float.nim`, with
+the generated power array in `src/brian_float_powers.nim`. The digit loop uses a
+`10^18` threshold and an explicit `complete` flag, eliminating both the digit
+counter and its old `20` sentinel. Grammar, public API and runtime dependencies
+are unchanged.
 
 The cached converter uses a 128-bit power per exponent (`hi`/`lo` words) and two
 64-by-64 multiplies, adding the high word of the second product as a carry. Its
@@ -178,16 +180,18 @@ clarifications, not parser behavior changes.
 ## Validation and portability
 
 - `nim c -r -d:release tests/tester.nim`: the tester matrix passes, covering
-  debug/release/danger, both SSO variants, native/forced portable multiplication,
+  debug/release/danger, both SSO variants, native/portable multiplication,
   and both ASan variants. Existing ASan configuration is unchanged.
 - The expanded float corpus and the full 697,852-value coverage corpus pass as
   actual ARM EABI5 32-bit static Linux executables under `qemu-arm-static`
   10.2.2, compiled with `--cpu:arm --os:linux`, GCC cross 16.1.1 and an ARM
-  hard-float glibc 2.41 sysroot. This build does **not** define
-  `brianPortableMultiply`: target width selects it. Logs are in `bench/logs/`.
+  hard-float glibc 2.41 sysroot. Target width selects the portable multiply;
+  there is no project-specific override define. Logs are in `bench/logs/`.
 - Generated ARM C contains the limb operations and no `__uint128_t`, `__int128`
   or native product emit. Native generated C contains the intended wide multiply
   with `unsigned long long` casts and no Nim-internal types in the emit block.
+  `tests/tfloats_portable.nim` compares the portable multiply against the
+  native one directly.
 - ARM64 was not executed: no `aarch64-linux-gnu-gcc` or AArch64 sysroot is
   installed in this environment. `tests/arm32-corpus.sh` already carries the
   guarded `--cpu:arm64` path and will run it unchanged once both are present;
@@ -216,7 +220,7 @@ tests/arm32-corpus.sh /tmp/brian-arm32 /tmp/brian-coverage
 The measurement script records the exact command, compiler config messages,
 Cachegrind output, checksum and ELF section sizes for each executable. Focused
 builds use `nim c --forceBuild:on -d:release -g`, distinct caches and outputs.
-The coverage script reconstructs the one-word candidate in its output directory
+The coverage script verifies the production reader over the generated corpora
 and reports per-corpus verification checksums and Cachegrind counts; see
 [the coverage audit](FLOAT_COVERAGE.md). Kostya uses this separate
 configuration, with `arc` for the second build:

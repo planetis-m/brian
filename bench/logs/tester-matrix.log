@@ -3,23 +3,22 @@ Hint: used config file '/usr/lib64/nim/config/nim.cfg' [Conf]
 Hint: used config file '/usr/lib64/nim/config/config.nims' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/nim.cfg' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/config.nims' [Conf]
-..................................................................................................................
+...................................................................................................................
 Hint: codegen mm: atomicArc; threads: on; opt: none (DEBUG BUILD, `-d:release` generates faster code)
-65767 lines; 0.349s; 72.988MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/.cache/nim/tbrian_d [SuccessX]
+65801 lines; 0.293s; 72.988MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/.cache/nim/tbrian_d [SuccessX]
 CC: brian.nim
-CC: tbrian.nim
 Hint:  [Link]
 Hint: mm: atomicArc; threads: on; opt: none (DEBUG BUILD, `-d:release` generates faster code)
-21608 lines; 0.756s; 20.059MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian [SuccessX]
+21608 lines; 0.666s; 20.059MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian [SuccessX]
 Hint: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian [Exec]
 Testing tbrian.nim with nim c -r -d:release
 Hint: used config file '/usr/lib64/nim/config/nim.cfg' [Conf]
 Hint: used config file '/usr/lib64/nim/config/config.nims' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/nim.cfg' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/config.nims' [Conf]
-..................................................................................................................
+...................................................................................................................
 Hint: codegen mm: atomicArc; threads: on; opt: speed; options: -d:release
-65767 lines; 0.312s; 73.176MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/.cache/nim/tbrian_r [SuccessX]
+65801 lines; 0.303s; 73.18MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/.cache/nim/tbrian_r [SuccessX]
 CC: system/exceptions.nim
 CC: std/private/digitsutils.nim
 CC: std/assertions.nim
@@ -36,20 +35,22 @@ CC: sets.nim
 CC: strutils.nim
 CC: tables.nim
 CC: std/envvars.nim
+CC: brian_float_powers.nim
+CC: brian_float.nim
 CC: brian.nim
 CC: tbrian.nim
 Hint:  [Link]
 Hint: mm: atomicArc; threads: on; opt: speed; options: -d:release
-21608 lines; 1.858s; 20.051MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian [SuccessX]
+21608 lines; 1.791s; 20.051MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian [SuccessX]
 Hint: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian [Exec]
 Testing tbrian.nim with nim c -r -d:danger
 Hint: used config file '/usr/lib64/nim/config/nim.cfg' [Conf]
 Hint: used config file '/usr/lib64/nim/config/config.nims' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/nim.cfg' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/config.nims' [Conf]
-..................................................................................................................
+...................................................................................................................
 Hint: codegen mm: atomicArc; threads: on; opt: speed; options: -d:danger
-65767 lines; 0.294s; 73.445MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/.cache/nim/tbrian_r [SuccessX]
+65801 lines; 0.295s; 73.445MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/.cache/nim/tbrian_r [SuccessX]
 CC: system/exceptions.nim
 CC: std/formatfloat.nim
 CC: system/dollars.nim
@@ -64,16 +65,16 @@ CC: brian.nim
 CC: tbrian.nim
 Hint:  [Link]
 Hint: mm: atomicArc; threads: on; opt: speed; options: -d:danger
-21608 lines; 1.981s; 20.172MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian [SuccessX]
+21608 lines; 1.875s; 20.172MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian [SuccessX]
 Hint: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian [Exec]
 Testing tbrian.nim with nim c -r -d:release --strings:sso
 Hint: used config file '/usr/lib64/nim/config/nim.cfg' [Conf]
 Hint: used config file '/usr/lib64/nim/config/config.nims' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/nim.cfg' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/config.nims' [Conf]
-..................................................................................................................
+...................................................................................................................
 Hint: codegen mm: atomicArc; threads: on; opt: speed; options: -d:release
-66335 lines; 0.311s; 73.172MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/.cache/nim/tbrian_r [SuccessX]
+66369 lines; 0.308s; 73.168MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/.cache/nim/tbrian_r [SuccessX]
 CC: system/exceptions.nim
 CC: std/private/digitsutils.nim
 CC: std/assertions.nim
@@ -91,16 +92,16 @@ CC: brian.nim
 CC: tbrian.nim
 Hint:  [Link]
 Hint: mm: atomicArc; threads: on; opt: speed; options: -d:release
-21608 lines; 1.925s; 20.051MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian [SuccessX]
+21608 lines; 1.860s; 20.051MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian [SuccessX]
 Hint: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian [Exec]
 Testing tbrian.nim with nim c -r -d:danger --strings:sso
 Hint: used config file '/usr/lib64/nim/config/nim.cfg' [Conf]
 Hint: used config file '/usr/lib64/nim/config/config.nims' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/nim.cfg' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/config.nims' [Conf]
-..................................................................................................................
+...................................................................................................................
 Hint: codegen mm: atomicArc; threads: on; opt: speed; options: -d:danger
-66335 lines; 0.310s; 73.531MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/.cache/nim/tbrian_r [SuccessX]
+66369 lines; 0.299s; 73.531MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/.cache/nim/tbrian_r [SuccessX]
 CC: system/exceptions.nim
 CC: std/formatfloat.nim
 CC: system/dollars.nim
@@ -116,16 +117,16 @@ CC: brian.nim
 CC: tbrian.nim
 Hint:  [Link]
 Hint: mm: atomicArc; threads: on; opt: speed; options: -d:danger
-21608 lines; 2.058s; 20.172MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian [SuccessX]
+21608 lines; 2.012s; 20.172MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian [SuccessX]
 Hint: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian [Exec]
 Testing tbrian.nim with ASAN_OPTIONS=detect_leaks=0 nim c -r -d:release -g -d:addressSanitizer
 Hint: used config file '/usr/lib64/nim/config/nim.cfg' [Conf]
 Hint: used config file '/usr/lib64/nim/config/config.nims' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/nim.cfg' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/config.nims' [Conf]
-..................................................................................................................
+...................................................................................................................
 Hint: codegen mm: atomicArc; threads: on; opt: speed; options: -d:release
-65767 lines; 0.299s; 73.461MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/.cache/nim/tbrian_r [SuccessX]
+65801 lines; 0.294s; 73.461MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/.cache/nim/tbrian_r [SuccessX]
 CC: system/exceptions.nim
 CC: std/private/digitsutils.nim
 CC: std/assertions.nim
@@ -142,20 +143,22 @@ CC: sets.nim
 CC: strutils.nim
 CC: tables.nim
 CC: std/envvars.nim
+CC: brian_float_powers.nim
+CC: brian_float.nim
 CC: brian.nim
 CC: tbrian.nim
 Hint:  [Link]
 Hint: mm: atomicArc; threads: on; opt: speed; options: -d:release
-21608 lines; 3.676s; 20.051MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian [SuccessX]
+21608 lines; 3.699s; 20.051MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian [SuccessX]
 Hint: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian [Exec]
 Testing tbrian.nim with ASAN_OPTIONS=detect_leaks=0 nim c -r -d:release -g -d:addressSanitizer --strings:sso
 Hint: used config file '/usr/lib64/nim/config/nim.cfg' [Conf]
 Hint: used config file '/usr/lib64/nim/config/config.nims' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/nim.cfg' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/config.nims' [Conf]
-..................................................................................................................
+...................................................................................................................
 Hint: codegen mm: atomicArc; threads: on; opt: speed; options: -d:release
-66335 lines; 0.305s; 73.473MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/.cache/nim/tbrian_r [SuccessX]
+66369 lines; 0.298s; 73.473MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/.cache/nim/tbrian_r [SuccessX]
 CC: system/exceptions.nim
 CC: std/private/digitsutils.nim
 CC: std/assertions.nim
@@ -172,33 +175,35 @@ CC: sets.nim
 CC: strutils.nim
 CC: tables.nim
 CC: std/envvars.nim
+CC: brian_float_powers.nim
+CC: brian_float.nim
 CC: brian.nim
 CC: tbrian.nim
 Hint:  [Link]
 Hint: mm: atomicArc; threads: on; opt: speed; options: -d:release
-21608 lines; 3.926s; 20.051MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian [SuccessX]
+21608 lines; 3.857s; 20.051MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian [SuccessX]
 Hint: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tbrian [Exec]
 Testing tfloats.nim with nim c -r -d:debug
 Hint: used config file '/usr/lib64/nim/config/nim.cfg' [Conf]
 Hint: used config file '/usr/lib64/nim/config/config.nims' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/nim.cfg' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/config.nims' [Conf]
-.........................................................................................................................................
+..........................................................................................................................................
 Hint: codegen mm: atomicArc; threads: on; opt: none (DEBUG BUILD, `-d:release` generates faster code)
-76457 lines; 0.330s; 72.988MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/.cache/nim/tfloats_d [SuccessX]
+76491 lines; 0.328s; 72.988MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/.cache/nim/tfloats_d [SuccessX]
 CC: brian.nim
 Hint:  [Link]
 Hint: mm: atomicArc; threads: on; opt: none (DEBUG BUILD, `-d:release` generates faster code)
-21608 lines; 0.525s; 20.059MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats [SuccessX]
+21608 lines; 0.518s; 20.059MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats [SuccessX]
 Hint: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats [Exec]
 Testing tfloats.nim with nim c -r -d:release
 Hint: used config file '/usr/lib64/nim/config/nim.cfg' [Conf]
 Hint: used config file '/usr/lib64/nim/config/config.nims' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/nim.cfg' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/config.nims' [Conf]
-.........................................................................................................................................
+..........................................................................................................................................
 Hint: codegen mm: atomicArc; threads: on; opt: speed; options: -d:release
-76457 lines; 0.355s; 73.168MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/.cache/nim/tfloats_r [SuccessX]
+76491 lines; 0.328s; 73.168MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/.cache/nim/tfloats_r [SuccessX]
 CC: system/exceptions.nim
 CC: std/private/digitsutils.nim
 CC: std/assertions.nim
@@ -219,20 +224,22 @@ CC: times.nim
 CC: std/envvars.nim
 CC: std/cmdline.nim
 CC: random.nim
+CC: brian_float_powers.nim
+CC: brian_float.nim
 CC: brian.nim
 CC: tfloats.nim
 Hint:  [Link]
 Hint: mm: atomicArc; threads: on; opt: speed; options: -d:release
-21608 lines; 0.969s; 20.051MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats [SuccessX]
+21608 lines; 0.867s; 20.051MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats [SuccessX]
 Hint: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats [Exec]
 Testing tfloats.nim with nim c -r -d:danger
 Hint: used config file '/usr/lib64/nim/config/nim.cfg' [Conf]
 Hint: used config file '/usr/lib64/nim/config/config.nims' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/nim.cfg' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/config.nims' [Conf]
-.........................................................................................................................................
+..........................................................................................................................................
 Hint: codegen mm: atomicArc; threads: on; opt: speed; options: -d:danger
-76457 lines; 0.349s; 73.449MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/.cache/nim/tfloats_r [SuccessX]
+76491 lines; 0.321s; 73.449MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/.cache/nim/tfloats_r [SuccessX]
 CC: system/exceptions.nim
 CC: system/dollars.nim
 CC: system.nim
@@ -251,16 +258,16 @@ CC: brian.nim
 CC: tfloats.nim
 Hint:  [Link]
 Hint: mm: atomicArc; threads: on; opt: speed; options: -d:danger
-21608 lines; 0.853s; 20.172MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats [SuccessX]
+21608 lines; 0.748s; 20.172MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats [SuccessX]
 Hint: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats [Exec]
 Testing tfloats.nim with nim c -r -d:release --strings:sso
 Hint: used config file '/usr/lib64/nim/config/nim.cfg' [Conf]
 Hint: used config file '/usr/lib64/nim/config/config.nims' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/nim.cfg' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/config.nims' [Conf]
-.........................................................................................................................................
+..........................................................................................................................................
 Hint: codegen mm: atomicArc; threads: on; opt: speed; options: -d:release
-77025 lines; 0.359s; 73.207MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/.cache/nim/tfloats_r [SuccessX]
+77059 lines; 0.336s; 73.207MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/.cache/nim/tfloats_r [SuccessX]
 CC: system/exceptions.nim
 CC: std/private/digitsutils.nim
 CC: std/assertions.nim
@@ -281,16 +288,16 @@ CC: brian.nim
 CC: tfloats.nim
 Hint:  [Link]
 Hint: mm: atomicArc; threads: on; opt: speed; options: -d:release
-21608 lines; 1.078s; 20.051MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats [SuccessX]
+21608 lines; 1.009s; 20.051MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats [SuccessX]
 Hint: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats [Exec]
 Testing tfloats.nim with nim c -r -d:danger --strings:sso
 Hint: used config file '/usr/lib64/nim/config/nim.cfg' [Conf]
 Hint: used config file '/usr/lib64/nim/config/config.nims' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/nim.cfg' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/config.nims' [Conf]
-.........................................................................................................................................
+..........................................................................................................................................
 Hint: codegen mm: atomicArc; threads: on; opt: speed; options: -d:danger
-77025 lines; 0.340s; 73.52MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/.cache/nim/tfloats_r [SuccessX]
+77059 lines; 0.321s; 73.52MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/.cache/nim/tfloats_r [SuccessX]
 CC: system/exceptions.nim
 CC: system/dollars.nim
 CC: system.nim
@@ -309,16 +316,16 @@ CC: brian.nim
 CC: tfloats.nim
 Hint:  [Link]
 Hint: mm: atomicArc; threads: on; opt: speed; options: -d:danger
-21608 lines; 0.890s; 20.172MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats [SuccessX]
+21608 lines; 0.836s; 20.172MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats [SuccessX]
 Hint: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats [Exec]
 Testing tfloats.nim with ASAN_OPTIONS=detect_leaks=0 nim c -r -d:release -g -d:addressSanitizer
 Hint: used config file '/usr/lib64/nim/config/nim.cfg' [Conf]
 Hint: used config file '/usr/lib64/nim/config/config.nims' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/nim.cfg' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/config.nims' [Conf]
-.........................................................................................................................................
+..........................................................................................................................................
 Hint: codegen mm: atomicArc; threads: on; opt: speed; options: -d:release
-76457 lines; 0.339s; 73.422MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/.cache/nim/tfloats_r [SuccessX]
+76491 lines; 0.329s; 73.422MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/.cache/nim/tfloats_r [SuccessX]
 CC: system/exceptions.nim
 CC: std/private/digitsutils.nim
 CC: std/assertions.nim
@@ -339,20 +346,22 @@ CC: times.nim
 CC: std/envvars.nim
 CC: std/cmdline.nim
 CC: random.nim
+CC: brian_float_powers.nim
+CC: brian_float.nim
 CC: brian.nim
 CC: tfloats.nim
 Hint:  [Link]
 Hint: mm: atomicArc; threads: on; opt: speed; options: -d:release
-21608 lines; 1.469s; 20.051MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats [SuccessX]
+21608 lines; 1.382s; 20.051MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats [SuccessX]
 Hint: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats [Exec]
 Testing tfloats.nim with ASAN_OPTIONS=detect_leaks=0 nim c -r -d:release -g -d:addressSanitizer --strings:sso
 Hint: used config file '/usr/lib64/nim/config/nim.cfg' [Conf]
 Hint: used config file '/usr/lib64/nim/config/config.nims' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/nim.cfg' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/config.nims' [Conf]
-.........................................................................................................................................
+..........................................................................................................................................
 Hint: codegen mm: atomicArc; threads: on; opt: speed; options: -d:release
-77025 lines; 0.341s; 73.449MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/.cache/nim/tfloats_r [SuccessX]
+77059 lines; 0.366s; 73.449MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/.cache/nim/tfloats_r [SuccessX]
 CC: system/exceptions.nim
 CC: std/private/digitsutils.nim
 CC: std/assertions.nim
@@ -373,211 +382,129 @@ CC: times.nim
 CC: std/envvars.nim
 CC: std/cmdline.nim
 CC: random.nim
+CC: brian_float_powers.nim
+CC: brian_float.nim
 CC: brian.nim
 CC: tfloats.nim
 Hint:  [Link]
 Hint: mm: atomicArc; threads: on; opt: speed; options: -d:release
-21608 lines; 1.745s; 20.051MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats [SuccessX]
+21608 lines; 1.661s; 20.051MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats [SuccessX]
 Hint: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats [Exec]
 Testing tfloats_portable.nim with nim c -r -d:debug
 Hint: used config file '/usr/lib64/nim/config/nim.cfg' [Conf]
 Hint: used config file '/usr/lib64/nim/config/config.nims' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/nim.cfg' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/config.nims' [Conf]
-.........................................................................................................................................
+........................................................................
 Hint: codegen mm: atomicArc; threads: on; opt: none (DEBUG BUILD, `-d:release` generates faster code)
-76458 lines; 0.347s; 72.953MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/.cache/nim/tfloats_portable_d [SuccessX]
-CC: brian.nim
+41949 lines; 0.085s; 38.238MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/.cache/nim/tfloats_portable_d [SuccessX]
 Hint:  [Link]
 Hint: mm: atomicArc; threads: on; opt: none (DEBUG BUILD, `-d:release` generates faster code)
-21608 lines; 0.548s; 20.043MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable [SuccessX]
+21608 lines; 0.212s; 20.043MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable [SuccessX]
 Hint: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable [Exec]
 Testing tfloats_portable.nim with nim c -r -d:release
 Hint: used config file '/usr/lib64/nim/config/nim.cfg' [Conf]
 Hint: used config file '/usr/lib64/nim/config/config.nims' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/nim.cfg' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/config.nims' [Conf]
-.........................................................................................................................................
+........................................................................
 Hint: codegen mm: atomicArc; threads: on; opt: speed; options: -d:release
-76458 lines; 0.329s; 73.137MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/.cache/nim/tfloats_portable_r [SuccessX]
+41949 lines; 0.087s; 38.289MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/.cache/nim/tfloats_portable_r [SuccessX]
 CC: system/exceptions.nim
 CC: std/private/digitsutils.nim
 CC: std/assertions.nim
 CC: system/dollars.nim
 CC: std/typedthreads.nim
 CC: system.nim
-CC: hashes.nim
-CC: math.nim
-CC: tables.nim
-CC: parseutils.nim
-CC: unicode.nim
-CC: strutils.nim
-CC: streams.nim
-CC: lexbase.nim
-CC: parsejson.nim
-CC: json.nim
-CC: times.nim
-CC: std/envvars.nim
-CC: std/cmdline.nim
-CC: random.nim
-CC: brian.nim
 CC: tfloats_portable.nim
 Hint:  [Link]
 Hint: mm: atomicArc; threads: on; opt: speed; options: -d:release
-21608 lines; 0.922s; 20.039MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable [SuccessX]
+21608 lines; 0.441s; 20.039MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable [SuccessX]
 Hint: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable [Exec]
 Testing tfloats_portable.nim with nim c -r -d:danger
 Hint: used config file '/usr/lib64/nim/config/nim.cfg' [Conf]
 Hint: used config file '/usr/lib64/nim/config/config.nims' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/nim.cfg' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/config.nims' [Conf]
-.........................................................................................................................................
+........................................................................
 Hint: codegen mm: atomicArc; threads: on; opt: speed; options: -d:danger
-76458 lines; 0.331s; 72.828MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/.cache/nim/tfloats_portable_r [SuccessX]
+41949 lines; 0.082s; 38.09MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/.cache/nim/tfloats_portable_r [SuccessX]
 CC: system/exceptions.nim
-CC: system/dollars.nim
 CC: system.nim
-CC: hashes.nim
-CC: math.nim
-CC: tables.nim
-CC: parseutils.nim
-CC: unicode.nim
-CC: strutils.nim
-CC: streams.nim
-CC: lexbase.nim
-CC: parsejson.nim
-CC: json.nim
-CC: random.nim
-CC: brian.nim
 CC: tfloats_portable.nim
 Hint:  [Link]
 Hint: mm: atomicArc; threads: on; opt: speed; options: -d:danger
-21608 lines; 0.816s; 20.059MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable [SuccessX]
+21608 lines; 0.385s; 20.059MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable [SuccessX]
 Hint: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable [Exec]
 Testing tfloats_portable.nim with nim c -r -d:release --strings:sso
 Hint: used config file '/usr/lib64/nim/config/nim.cfg' [Conf]
 Hint: used config file '/usr/lib64/nim/config/config.nims' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/nim.cfg' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/config.nims' [Conf]
-.........................................................................................................................................
+........................................................................
 Hint: codegen mm: atomicArc; threads: on; opt: speed; options: -d:release
-77026 lines; 0.338s; 73.188MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/.cache/nim/tfloats_portable_r [SuccessX]
+42517 lines; 0.090s; 38.328MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/.cache/nim/tfloats_portable_r [SuccessX]
 CC: system/exceptions.nim
 CC: std/private/digitsutils.nim
 CC: std/assertions.nim
 CC: system/dollars.nim
 CC: system.nim
-CC: hashes.nim
-CC: math.nim
-CC: tables.nim
-CC: parseutils.nim
-CC: unicode.nim
-CC: strutils.nim
-CC: streams.nim
-CC: lexbase.nim
-CC: parsejson.nim
-CC: json.nim
-CC: random.nim
-CC: brian.nim
 CC: tfloats_portable.nim
 Hint:  [Link]
 Hint: mm: atomicArc; threads: on; opt: speed; options: -d:release
-21608 lines; 1.096s; 20.039MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable [SuccessX]
+21608 lines; 0.512s; 20.039MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable [SuccessX]
 Hint: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable [Exec]
 Testing tfloats_portable.nim with nim c -r -d:danger --strings:sso
 Hint: used config file '/usr/lib64/nim/config/nim.cfg' [Conf]
 Hint: used config file '/usr/lib64/nim/config/config.nims' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/nim.cfg' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/config.nims' [Conf]
-.........................................................................................................................................
+........................................................................
 Hint: codegen mm: atomicArc; threads: on; opt: speed; options: -d:danger
-77026 lines; 0.331s; 73.195MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/.cache/nim/tfloats_portable_r [SuccessX]
+42517 lines; 0.094s; 38.324MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/.cache/nim/tfloats_portable_r [SuccessX]
 CC: system/exceptions.nim
-CC: system/dollars.nim
 CC: system.nim
-CC: hashes.nim
-CC: math.nim
-CC: tables.nim
-CC: parseutils.nim
-CC: unicode.nim
-CC: strutils.nim
-CC: streams.nim
-CC: lexbase.nim
-CC: parsejson.nim
-CC: json.nim
-CC: random.nim
-CC: brian.nim
 CC: tfloats_portable.nim
 Hint:  [Link]
 Hint: mm: atomicArc; threads: on; opt: speed; options: -d:danger
-21608 lines; 0.937s; 20.059MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable [SuccessX]
+21608 lines; 0.468s; 20.059MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable [SuccessX]
 Hint: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable [Exec]
 Testing tfloats_portable.nim with ASAN_OPTIONS=detect_leaks=0 nim c -r -d:release -g -d:addressSanitizer
 Hint: used config file '/usr/lib64/nim/config/nim.cfg' [Conf]
 Hint: used config file '/usr/lib64/nim/config/config.nims' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/nim.cfg' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/config.nims' [Conf]
-.........................................................................................................................................
+........................................................................
 Hint: codegen mm: atomicArc; threads: on; opt: speed; options: -d:release
-76458 lines; 0.380s; 73.387MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/.cache/nim/tfloats_portable_r [SuccessX]
+41949 lines; 0.090s; 38.34MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/.cache/nim/tfloats_portable_r [SuccessX]
 CC: system/exceptions.nim
 CC: std/private/digitsutils.nim
 CC: std/assertions.nim
 CC: system/dollars.nim
 CC: std/typedthreads.nim
 CC: system.nim
-CC: hashes.nim
-CC: math.nim
-CC: tables.nim
-CC: parseutils.nim
-CC: unicode.nim
-CC: strutils.nim
-CC: streams.nim
-CC: lexbase.nim
-CC: parsejson.nim
-CC: json.nim
-CC: times.nim
-CC: std/envvars.nim
-CC: std/cmdline.nim
-CC: random.nim
-CC: brian.nim
 CC: tfloats_portable.nim
 Hint:  [Link]
 Hint: mm: atomicArc; threads: on; opt: speed; options: -d:release
-21608 lines; 1.709s; 20.039MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable [SuccessX]
+21608 lines; 0.699s; 20.039MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable [SuccessX]
 Hint: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable [Exec]
 Testing tfloats_portable.nim with ASAN_OPTIONS=detect_leaks=0 nim c -r -d:release -g -d:addressSanitizer --strings:sso
 Hint: used config file '/usr/lib64/nim/config/nim.cfg' [Conf]
 Hint: used config file '/usr/lib64/nim/config/config.nims' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/nim.cfg' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/config.nims' [Conf]
-.........................................................................................................................................
+........................................................................
 Hint: codegen mm: atomicArc; threads: on; opt: speed; options: -d:release
-77026 lines; 0.380s; 73.418MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/.cache/nim/tfloats_portable_r [SuccessX]
+42517 lines; 0.092s; 38.348MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/.cache/nim/tfloats_portable_r [SuccessX]
 CC: system/exceptions.nim
 CC: std/private/digitsutils.nim
 CC: std/assertions.nim
 CC: system/dollars.nim
 CC: std/typedthreads.nim
 CC: system.nim
-CC: hashes.nim
-CC: math.nim
-CC: tables.nim
-CC: parseutils.nim
-CC: unicode.nim
-CC: strutils.nim
-CC: streams.nim
-CC: lexbase.nim
-CC: parsejson.nim
-CC: json.nim
-CC: times.nim
-CC: std/envvars.nim
-CC: std/cmdline.nim
-CC: random.nim
-CC: brian.nim
 CC: tfloats_portable.nim
 Hint:  [Link]
 Hint: mm: atomicArc; threads: on; opt: speed; options: -d:release
-21608 lines; 1.804s; 20.039MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable [SuccessX]
+21608 lines; 0.839s; 20.039MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable.nim; out: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable [SuccessX]
 Hint: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/tests/tfloats_portable [Exec]
 All test configurations completed.
