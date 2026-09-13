@@ -1,12 +1,12 @@
 == compact_halfway_neighbors.txt ==
-compact_halfway_neighbors.txt 60000 0 fcZero=0 fcClinger=0 fcCached=40000 fcIncomplete=0 fcLong=0 fcExponent=0 fcHalfway=20000 fcNonNormal=0
+compact_halfway_neighbors.txt 60000 0
 == exact_halfway_neighbors.txt ==
-exact_halfway_neighbors.txt 30000 1577958180975637301 fcZero=0 fcClinger=0 fcCached=108 fcIncomplete=29838 fcLong=0 fcExponent=0 fcHalfway=54 fcNonNormal=0
+exact_halfway_neighbors.txt 30000 1577958180975637301
 == exponent_boundaries.txt ==
-exponent_boundaries.txt 7852 0 fcZero=2 fcClinger=270 fcCached=7124 fcIncomplete=0 fcLong=0 fcExponent=24 fcHalfway=6 fcNonNormal=426
+exponent_boundaries.txt 7852 0
 == random_17digits.txt ==
-random_17digits.txt 200000 7140787190389245347 fcZero=0 fcClinger=1488 fcCached=198425 fcIncomplete=0 fcLong=0 fcExponent=0 fcHalfway=0 fcNonNormal=87
+random_17digits.txt 200000 7140787190389245347
 == random_decimals.txt ==
-random_decimals.txt 200000 15843290902634551887 fcZero=0 fcClinger=11271 fcCached=172167 fcIncomplete=0 fcLong=0 fcExponent=5938 fcHalfway=6 fcNonNormal=10618
+random_decimals.txt 200000 15843290902634551887
 == shortest_roundtrip.txt ==
-shortest_roundtrip.txt 200000 7140787190389245347 fcZero=0 fcClinger=7156 fcCached=192757 fcIncomplete=0 fcLong=0 fcExponent=0 fcHalfway=0 fcNonNormal=87
+shortest_roundtrip.txt 200000 7140787190389245347

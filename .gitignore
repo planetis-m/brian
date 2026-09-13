@@ -7,7 +7,6 @@ nimcache/
 /tests/tbrian
 /tests/tfloats
 /tests/tfloats_portable
-/tests/tfloatstats
 
 # Focused Cachegrind benchmark executables.
 /bench/strings_plain

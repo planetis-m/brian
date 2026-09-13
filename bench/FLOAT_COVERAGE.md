@@ -1,11 +1,11 @@
 # Float conversion coverage audit
 
-This audit compares the cached-power product reverted at `d01ccc0` (one 64-bit
-power word and one wide multiply) with the two-word product restored in the
-working tree. Both retain `readFloat`'s single `tryFastFloat`/stdlib fork and
-the same numeric grammar; only the cached-power interval test differs.
+This audit compares the one-word cached-power product (`d01ccc0`: one 64-bit
+power word and one wide multiply) with the two-word product that is now the
+final implementation. Both retain `readFloat`'s single `tryFastFloat`/stdlib
+fork and the same numeric grammar; only the cached-power interval test differs.
 
-The one-word table was `array[-342..308, uint64]` (5,208 bytes, 64-byte powers).
+The one-word table was `array[-342..308, uint64]` (5,208 bytes, 64-bit powers).
 The two-word table is `array[-342..308, tuple[hi, lo: uint64]]` (10,416 bytes,
 128-bit powers). `tools/generate_float_powers.py` reproduces the committed
 two-word array; `bench/float_coverage.py` reconstructs the one-word candidate in
@@ -22,9 +22,8 @@ python3 bench/float_coverage.py /tmp/brian-coverage
 The script writes the corpora below, then for each variant (`one_word`,
 `two_word`):
 
-1. builds a probe against the corpora with `-d:brianFloatStats
-   -d:brianFloatVerify -d:release --mm:arc -d:useMalloc --threads:on
-   --skipParentCfg:on`;
+1. builds a probe against the corpora with `-d:brianFloatVerify -d:release
+   --mm:arc -d:useMalloc --threads:on --skipParentCfg:on`;
 2. runs every corpus, asserting each parsed binary64 equals the bit pattern
    recorded for the random corpora and, for every corpus, equals both
    `std/parseutils.parseFloat` and `std/json.parseJson`;
@@ -63,23 +62,6 @@ both variants. The two probe runs exited zero with identical per-corpus
 checksums. No input was found where the one-word product returns different
 bits; its regression is coverage and throughput, not observed wrong results.
 
-## Conversion-reason coverage
-
-Counts from `-d:brianFloatStats` (columns are one-word then two-word):
-
-| Corpus | `fcCached` | `fcHalfway` | `fcNonNormal` | Other |
-| --- | ---: | ---: | ---: | --- |
-| `random_17digits` | 198,425 / 198,425 | 0 / 0 | 87 / 87 | 1,488 `fcClinger` |
-| `shortest_roundtrip` | 192,708 / 192,757 | 49 / 0 | 87 / 87 | 7,156 `fcClinger` |
-| `random_decimals` | 172,044 / 172,167 | 132 / 6 | 10,615 / 10,618 | 11,271 `fcClinger`, 5,938 `fcExponent` |
-| `compact_halfway_neighbors` | 38,000 / 40,000 | 22,000 / 20,000 | 0 / 0 | - |
-| `exact_halfway_neighbors` | 104 / 108 | 58 / 54 | 0 / 0 | 29,838 `fcIncomplete` |
-| `exponent_boundaries` | 7,114 / 7,124 | 16 / 6 | 426 / 426 | 270 `fcClinger`, 24 `fcExponent`, 2 `fcZero` |
-
-The two-word product sends 2,189 fewer near-tie values to the exact stdlib
-fallback overall, 2,000 of them in `compact_halfway_neighbors`. The extra
-cached conversions are the intended effect of its tighter uncertainty interval.
-
 ## Instruction counts
 
 Cachegrind `I refs` for the instrumented parse loop, one-word then two-word:
@@ -96,21 +78,16 @@ Cachegrind `I refs` for the instrumented parse loop, one-word then two-word:
 The two-word product costs roughly ten extra instructions per cached conversion
 (the second wide multiply and its carry), but each avoided fallback saves the
 much larger exact stdlib conversion. Ordinary decimal input pays the small
-premium; tie-heavy input wins, and the wider `fcCached` coverage is the point.
+premium; tie-heavy input wins, which is the point of the tighter interval.
 
 ## Decision
 
 The two-word product is kept. Over 697,852 values neither form produced a wrong
-result, so the regression is coverage and throughput rather than demonstrated
-incorrect rounding. The two-word product sends 2,189 fewer near-tie values to
-the exact fallback, and its tighter handling of the low product word is
-what it spends an extra multiply on. On ordinary decimal input it pays roughly
-ten instructions per cached conversion; on the tie-heavy
+result, so the difference is coverage and throughput rather than demonstrated
+incorrect rounding. The two-word form uses the low product word, which tightens
+its uncertainty interval; on ordinary decimal input it pays roughly ten extra
+instructions per cached conversion, while on the tie-heavy
 `compact_halfway_neighbors` corpus it saves about 3.25M instructions for 60,000
 values by avoiding the exact fallback. Reverting to one word only saves about
 5 KB of table; if that matters later, keep the two-word math and add a
 strided/optional table behind a define in a separate, measured follow-up.
-
-The classification regression is guarded by `tests/tfloatstats.nim`, which
-asserts that `1e126`, `1e210` and `4611686018427388415e0` reach `fcCached`. The
-one-word product sends those same inputs to `fcHalfway` and the test fails.

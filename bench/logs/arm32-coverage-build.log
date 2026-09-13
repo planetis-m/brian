@@ -3,7 +3,7 @@ Hint: used config file '/usr/lib64/nim/config/config.nims' [Conf]
 Hint: used config file '/home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/bench/config.nims' [Conf]
 ...................................................................................................................................
 Hint: codegen mm: arc; threads: on; opt: speed; options: -d:release
-75115 lines; 0.333s; 73.012MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/bench/float_coverage.nim; out: /tmp/brian-arm32-new/arm32-coverage-cache [SuccessX]
+75090 lines; 0.333s; 73.012MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/bench/float_coverage.nim; out: /tmp/rv-arm3/arm32-coverage-cache [SuccessX]
 CC: system/exceptions.nim
 CC: std/private/digitsutils.nim
 CC: std/assertions.nim
@@ -29,4 +29,4 @@ CC: json.nim
 CC: float_coverage.nim
 Hint:  [Link]
 Hint: mm: arc; threads: on; opt: speed; options: -d:release
-21584 lines; 1.002s; 20.039MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/bench/float_coverage.nim; out: /tmp/brian-arm32-new/arm32-coverage [SuccessX]
+21584 lines; 1.035s; 20.035MiB peakmem; proj: /home/ageralis/Projects/scam-detector-multiagent-v2/clean-design-rewrite/deps/brian/bench/float_coverage.nim; out: /tmp/rv-arm3/arm32-coverage [SuccessX]

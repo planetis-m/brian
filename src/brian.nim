@@ -296,12 +296,6 @@ proc readInt[T: SomeInteger](p: var JsonParser; dst: var T) =
 
 include brian_float_powers
 
-when defined(brianFloatStats):
-  # Private, opt-in diagnostics for single-threaded benchmark programs.
-  type FloatConversion = enum
-    fcZero, fcClinger, fcCached, fcIncomplete, fcLong, fcExponent, fcHalfway, fcNonNormal
-  var floatCounts: array[FloatConversion, uint64]
-
 proc multiplyWide(a, b: uint64): tuple[hi, lo: uint64] {.inline.} =
   when (defined(gcc) or defined(clang)) and sizeof(pointer) == 8 and
       not defined(brianPortableMultiply):
@@ -327,11 +321,9 @@ proc multiplyWide(a, b: uint64): tuple[hi, lo: uint64] {.inline.} =
 proc tryFastFloat(significand: uint64; exponent: int; tokenLen: uint;
     complete, negative: bool; value: var float64): bool {.inline.} =
   if significand == 0:
-    when defined(brianFloatStats): inc floatCounts[fcZero]
     value = if negative: -0.0 else: 0.0
     return true
   if significand < (1'u64 shl 53) and exponent in -22..22:
-    when defined(brianFloatStats): inc floatCounts[fcClinger]
     value = float64(significand)
     if exponent < 0:
       value /= DecimalPowers[-exponent]
@@ -341,13 +333,8 @@ proc tryFastFloat(significand: uint64; exponent: int; tokenLen: uint;
     return true
   # Preserve the stdlib's bounded-buffer behavior on long spellings, and
   # keep saturated fraction/exponent counters out of cached conversion.
-  if not complete or tokenLen > 64:
-    when defined(brianFloatStats):
-      inc floatCounts[if not complete: fcIncomplete else: fcLong]
-    return false
-  if exponent notin low(FloatPowers)..high(FloatPowers):
-    when defined(brianFloatStats): inc floatCounts[fcExponent]
-    return false
+  if not complete or tokenLen > 64: return false
+  if exponent notin low(FloatPowers)..high(FloatPowers): return false
   let power = FloatPowers[exponent]
   let shift = countLeadingZeroBits(significand)
   let normalized = significand shl shift
@@ -364,7 +351,6 @@ proc tryFastFloat(significand: uint64; exponent: int; tokenLen: uint;
   let remainder = product.hi and mask
   if (remainder == halfway and product.lo == 0) or
       (remainder == halfway - 1 and product.lo >= high(uint64) - 1):
-    when defined(brianFloatStats): inc floatCounts[fcHalfway]
     return false
   var mantissa = product.hi shr discarded
   if remainder >= halfway: inc mantissa
@@ -376,10 +362,7 @@ proc tryFastFloat(significand: uint64; exponent: int; tokenLen: uint;
     mantissa = mantissa shr 1
     inc binaryExponent
   # Leave subnormal rounding and overflow to the existing exact converter.
-  if binaryExponent <= 0 or binaryExponent >= 2047:
-    when defined(brianFloatStats): inc floatCounts[fcNonNormal]
-    return false
-  when defined(brianFloatStats): inc floatCounts[fcCached]
+  if binaryExponent <= 0 or binaryExponent >= 2047: return false
   value = cast[float64]((uint64(binaryExponent) shl 52) or
     (mantissa and ((1'u64 shl 52) - 1)))
   if negative: value = -value

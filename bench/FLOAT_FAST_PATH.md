@@ -167,10 +167,7 @@ exact bits, opposite halfway ties, subnormals, overflow, all cached exponents,
 error cases. New regressions exercise threshold completeness, neighbors of
 halfway ties at different scales, and signed zeros inside/outside Clinger.
 Numeric fixtures compare binary64 with `parseutils.parseFloat` and
-`std/json.parseJson`, and compare binary32 narrowing. `tests/tfloatstats.nim`
-additionally asserts the conversion-reason classification of near-tie inputs
-that only the two-word product reaches through `fcCached`; it fails if the
-one-word product is restored.
+`std/json.parseJson`, and compare binary32 narrowing.
 
 Existing compatibility exceptions remain explicit: permissive zero-like tokens
 and signed zero with huge exponents preserve Brian's old behavior even when
@@ -220,7 +217,7 @@ The measurement script records the exact command, compiler config messages,
 Cachegrind output, checksum and ELF section sizes for each executable. Focused
 builds use `nim c --forceBuild:on -d:release -g`, distinct caches and outputs.
 The coverage script reconstructs the one-word candidate in its output directory
-and reports conversion reasons and per-corpus Cachegrind counts; see
+and reports per-corpus verification checksums and Cachegrind counts; see
 [the coverage audit](FLOAT_COVERAGE.md). Kostya uses this separate
 configuration, with `arc` for the second build:
 

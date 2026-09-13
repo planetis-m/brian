@@ -125,7 +125,7 @@ for variant in ['one_word', 'two_word']:
         'include brian', 'include "' + str(implementation / 'brian.nim') + '"'))
     command = ['nim', 'c', '--forceBuild:on', '--skipParentCfg:on',
                '--mm:arc', '-d:useMalloc', '--threads:on',
-               '-d:release', '-d:brianFloatStats', '-d:brianFloatVerify',
+               '-d:release', '-d:brianFloatVerify',
                '--path:' + str(implementation),
                '--nimcache:' + str(out / (variant + '-cache')),
                '-o:' + str(out / (variant + '-probe')), str(runner)]
@@ -140,7 +140,7 @@ for variant in ['one_word', 'two_word']:
     (out / (variant + '.rates')).write_text(run.stdout)
     print(variant, run.stdout, flush=True)
     profile = [arg for arg in command if arg not in
-               ['-d:brianFloatStats', '-d:brianFloatVerify']]
+               ['-d:brianFloatVerify']]
     profile.insert(2, '-d:brianFloatProfile')
     profile = [arg.replace(variant + '-cache', variant + '-profile-cache')
                .replace(variant + '-probe', variant + '-profile') for arg in profile]

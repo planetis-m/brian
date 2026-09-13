@@ -79,7 +79,7 @@ build_and_run() {
 
   local cov="$WORK/$arch-coverage"
   echo "building float_coverage.nim for $arch" >&2
-  nim c "${flags[@]}" --threads:on -d:brianFloatStats -d:brianFloatVerify \
+  nim c "${flags[@]}" --threads:on -d:brianFloatVerify \
     --path:"$ROOT/src" --nimcache:"$WORK/$arch-coverage-cache" -o:"$cov" \
     "$ROOT/bench/float_coverage.nim" > "$WORK/$arch-coverage-build.log" 2>&1 \
     || { cat "$WORK/$arch-coverage-build.log" >&2; echo "$label coverage build failed" >&2; return 1; }
