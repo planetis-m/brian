@@ -5,6 +5,8 @@ nimcache/
 # Local test executables.
 /tests/tester
 /tests/tbrian
+/tests/tfloats
+/tests/tfloats_portable
 
 # Focused Cachegrind benchmark executables.
 /bench/strings_plain
@@ -27,3 +29,7 @@ nimcache/
 /bench/compare/nimcache/
 /bench/compare/objects_read_*
 /bench/compare/objects_write_*
+
+# Float-power generation and reproducible benchmark helpers.
+__pycache__/
+/bench/kostya/kostya_brian

@@ -3,7 +3,7 @@
 ## Use `fromJson` and `toJson` for ordinary values. Custom types can provide
 ## `readJson` and `writeJson` overloads.
 
-import std/[formatfloat, macros, math, options, parseutils, paths, sets, syncio, tables]
+import std/[bitops, formatfloat, macros, math, options, parseutils, paths, sets, syncio, tables]
 from std/typetraits import isNamedTuple
 
 type
@@ -294,22 +294,95 @@ proc readInt[T: SomeInteger](p: var JsonParser; dst: var T) =
     else:
       dst = T(value)
 
+include brian_float_powers
+
+proc multiplyWide(a, b: uint64): tuple[hi, lo: uint64] {.inline.} =
+  when (defined(gcc) or defined(clang)) and sizeof(pointer) == 8 and
+      not defined(brianPortableMultiply):
+    var hi, lo: uint64
+    {.emit: """
+    __uint128_t product = (__uint128_t)`a` * (__uint128_t)`b`;
+    `hi` = (unsigned long long)(product >> 64);
+    `lo` = (unsigned long long)product;
+    """.}
+    result = (hi, lo)
+  else:
+    const Mask = 0xffffffff'u64
+    let aLow = a and Mask
+    let bLow = b and Mask
+    let aHigh = a shr 32
+    let bHigh = b shr 32
+    let low = aLow * bLow
+    let middle = aHigh * bLow + (low shr 32)
+    let carry = (middle and Mask) + aLow * bHigh
+    result.lo = (carry shl 32) or (low and Mask)
+    result.hi = aHigh * bHigh + (middle shr 32) + (carry shr 32)
+
+proc tryFastFloat(significand: uint64; exponent: int; tokenLen: uint;
+    complete, negative: bool; value: var float64): bool {.inline.} =
+  if significand == 0:
+    value = if negative: -0.0 else: 0.0
+    return true
+  if significand < (1'u64 shl 53) and exponent in -22..22:
+    value = float64(significand)
+    if exponent < 0:
+      value /= DecimalPowers[-exponent]
+    else:
+      value *= DecimalPowers[exponent]
+    if negative: value = -value
+    return true
+  # Preserve the stdlib's bounded-buffer behavior on long spellings, and
+  # keep saturated fraction/exponent counters out of cached conversion.
+  if not complete or tokenLen > 64: return false
+  if exponent notin low(FloatPowers)..high(FloatPowers): return false
+  let power = FloatPowers[exponent]
+  let shift = countLeadingZeroBits(significand)
+  let normalized = significand shl shift
+  let product = multiplyWide(normalized, power)
+  # A downward-rounded 64-bit power has error < 1, so the exact scaled
+  # product is in [P, P + normalized), a span shorter than one low word.
+  let upper = int(product.hi shr 63)
+  let discarded = 10 + upper
+  let mask = (1'u64 shl discarded) - 1
+  let halfway = 1'u64 shl (discarded - 1)
+  let remainder = product.hi and mask
+  if (remainder == halfway and product.lo == 0) or
+      remainder == halfway - 1:
+    return false
+  var mantissa = product.hi shr discarded
+  if remainder >= halfway: inc mantissa
+  # floor(log2(10^exponent)); the generator checks this for every entry.
+  # ashr rounds negative exponents down, unlike integer division.
+  let powerExponent = ashr(exponent * 217706, 16)
+  var binaryExponent = powerExponent + 63 + upper - shift + 1023
+  if mantissa == (1'u64 shl 53):
+    mantissa = mantissa shr 1
+    inc binaryExponent
+  # Leave subnormal rounding and overflow to the existing exact converter.
+  if binaryExponent <= 0 or binaryExponent >= 2047: return false
+  value = cast[float64]((uint64(binaryExponent) shl 52) or
+    (mantissa and ((1'u64 shl 52) - 1)))
+  if negative: value = -value
+  result = true
+
 proc readFloat[T: SomeFloat](p: var JsonParser; dst: var T) =
-  # Uses a small exact fast path and the stdlib converter for difficult values.
+  # Scan once; use the stdlib converter only when fast rounding is uncertain.
   p.skip()
   let data = p.data
   let start = p.pos
   if p.pos < p.len and data[p.pos] == '-': inc p.pos
   if p.pos >= p.len: p.raiseParseError("incomplete number")
   var significand = 0'u64
-  var storedDigits = 0
+  var complete = true
   var fractionDigits = 0
   template addDigit() =
     let digit = uint64(ord(data[p.pos]) - ord('0'))
-    if significand != 0 or digit != 0:
-      if storedDigits < 19:
-        significand = significand * 10'u64 + digit
-        inc storedDigits
+    # A prefix below 10^18 can accept one more digit without exceeding
+    # 19 significant digits. Leading zeros need no separate branch.
+    if significand < 1_000_000_000_000_000_000'u64:
+      significand = significand * 10'u64 + digit
+    else:
+      complete = false
     inc p.pos
   while p.pos < p.len and data[p.pos] in {'0'..'9'}: addDigit()
   if p.pos < p.len and data[p.pos] == '.':
@@ -334,18 +407,8 @@ proc readFloat[T: SomeFloat](p: var JsonParser; dst: var T) =
     if exponentNegative: exponent = -exponent
   let decimalExponent = exponent - fractionDigits
   var value = 0.0
-  if significand == 0:
-    value = if data[start] == '-': -0.0 else: 0.0
-  # Every stored 19-digit significand exceeds the exact-integer threshold and
-  # therefore takes the stdlib fallback below.
-  elif significand < (1'u64 shl 53) and decimalExponent in -22..22:
-    value = float64(significand)
-    if decimalExponent < 0:
-      value /= DecimalPowers[-decimalExponent]
-    else:
-      value *= DecimalPowers[decimalExponent]
-    if data[start] == '-': value = -value
-  else:
+  if not tryFastFloat(significand, decimalExponent, uint(p.pos) - uint(start),
+      complete, data[start] == '-', value):
     var token: string
     captureSpan(token, data, start, p.pos)
     let consumed = parseutils.parseFloat(token, value)
