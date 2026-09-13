@@ -1,0 +1,11 @@
+host: Linux 7.2.4-200.fc44.x86_64 x86_64
+nim: Nim Compiler Version 2.3.1 [Linux: amd64]
+arm32 compiler: arm-linux-gnueabi arm-linux-gnu-gcc (GCC) 16.1.1 20260501 (Red Hat Cross 16.1.1-1)
+arm32 emulator: qemu-arm version 10.2.2 (qemu-10.2.2-1.fc44)
+arm32 sysroot: /tmp/brian-arm/usr/arm-linux-gnueabihf
+arm64 compiler: unavailable
+arm64 emulator: qemu-aarch64 version 10.2.2 (qemu-10.2.2-1.fc44)
+arm64 sysroot: /tmp/brian-arm64/usr/aarch64-linux-gnu
+
+binary sha256:
+a8e31661c2f4b75c783d0fd9de2da59c13b23c68007d9f8c95eb3b29d1efccec  /tmp/brian-arm32-new/arm32-tfloats

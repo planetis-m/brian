@@ -1,0 +1,6 @@
+random_17digits.txt 200000 7140787190389245347 fcZero=0 fcClinger=1488 fcCached=198425 fcIncomplete=0 fcLong=0 fcExponent=0 fcHalfway=0 fcNonNormal=87
+shortest_roundtrip.txt 200000 7140787190389245347 fcZero=0 fcClinger=7156 fcCached=192708 fcIncomplete=0 fcLong=0 fcExponent=0 fcHalfway=49 fcNonNormal=87
+random_decimals.txt 200000 15843290902634551887 fcZero=0 fcClinger=11271 fcCached=172044 fcIncomplete=0 fcLong=0 fcExponent=5938 fcHalfway=132 fcNonNormal=10615
+compact_halfway_neighbors.txt 60000 0 fcZero=0 fcClinger=0 fcCached=38000 fcIncomplete=0 fcLong=0 fcExponent=0 fcHalfway=22000 fcNonNormal=0
+exact_halfway_neighbors.txt 30000 1577958180975637301 fcZero=0 fcClinger=0 fcCached=104 fcIncomplete=29838 fcLong=0 fcExponent=0 fcHalfway=58 fcNonNormal=0
+exponent_boundaries.txt 7852 0 fcZero=2 fcClinger=270 fcCached=7114 fcIncomplete=0 fcLong=0 fcExponent=24 fcHalfway=16 fcNonNormal=426
