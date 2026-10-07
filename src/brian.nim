@@ -181,13 +181,15 @@ proc parseString(p: var JsonParser; dst: var string; rawStart: var int;
       of 'v': dst.add '\v'
       of 'u':
         var codePoint = p.readHex()
-        if codePoint in 0xd800..0xdbff:
-          if p.pos + 2 > p.len or p.data[p.pos] != '\\' or p.data[p.pos + 1] != 'u':
-            p.raiseParseError("high surrogate without low surrogate")
+        if codePoint in 0xd800..0xdbff and p.pos + 2 <= p.len and
+            p.data[p.pos] == '\\' and p.data[p.pos + 1] == 'u':
           inc p.pos, 2
           let low = p.readHex()
-          if low notin 0xdc00..0xdfff: p.raiseParseError("invalid low surrogate")
-          codePoint = 0x10000 + ((codePoint - 0xd800) shl 10) + (low - 0xdc00)
+          if low in 0xdc00..0xdfff:
+            codePoint = 0x10000 + ((codePoint - 0xd800) shl 10) + (low - 0xdc00)
+          else:
+            # Leave this six-byte escape for the next iteration.
+            dec p.pos, 6
         dst.addCodePoint(codePoint)
       else:
         dst.add '\\'
@@ -484,15 +486,6 @@ macro genEnumRead(T: typedesc; value, dst: typed; onUnknown: untyped): untyped =
     result.add nnkOfBranch.newTree(newLit(length), matches)
   result.add nnkElse.newTree(onUnknown.copyNimTree)
 
-proc skipUnicodeEscape(p: var JsonParser) {.noinline.} =
-  let high = p.readHex()
-  if high in 0xd800..0xdbff:
-    if p.pos + 2 > p.len or p.data[p.pos] != '\\' or p.data[p.pos + 1] != 'u':
-      p.raiseParseError("high surrogate without low surrogate")
-    inc p.pos, 2
-    let low = p.readHex()
-    if low notin 0xdc00..0xdfff: p.raiseParseError("invalid low surrogate")
-
 proc skipString(p: var JsonParser) =
   p.skip()
   if p.pos >= p.len or p.data[p.pos] != '"': p.raiseParseError("expected string")
@@ -512,7 +505,7 @@ proc skipString(p: var JsonParser) =
       inc p.pos
       case escaped
       of '"', '\\', '/', 'b', 'f', 'n', 'r', 't': discard
-      of 'u': p.skipUnicodeEscape()
+      of 'u': discard p.readHex()
       else:
         discard
     else:

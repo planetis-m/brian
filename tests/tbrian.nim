@@ -168,7 +168,7 @@ block field_lifetime_and_unknown_policy:
 
 block malformed_input:
   for input in ["+1", "[1,]", "{\"x\":1,}",
-                "true false", "\"\\ud800\"", "\"\\u12xz\""]:
+                "true false", "\"\\u12xz\""]:
     doAssertRaises JsonParsingError:
       discard fromJson(input, RawJson)
 
@@ -302,3 +302,21 @@ block string_serialization:
   doAssert toJson("line\nbreak") == "\"line\\nbreak\""
   doAssert toJson("\xff") == "\"\xff\""
   doAssert toJson("\v\x0e\x1f") == "\"\\u000b\\u000E\\u001F\""
+
+block surrogate_compatibility:
+  for (input, expected) in [
+    ("\"\\ud83d\"", "\xED\xA0\xBD"),
+    ("\"\\udc3e\"", "\xED\xB0\xBE"),
+    ("\"\\ud83d\\udc3e\"", "🐾"),
+    ("\"\\udbff\\udfff\"", "\xF4\x8F\xBF\xBF"),
+    ("\"\\ud83d\\u0061\"", "\xED\xA0\xBDa"),
+    ("\"\\ud83dtext\"", "\xED\xA0\xBDtext"),
+    ("\"\\ud83d\\ud83d\\udc3e\"", "\xED\xA0\xBD🐾")
+  ]:
+    doAssert fromJson(input, string) == expected
+    doAssert string(fromJson(input, RawJson)) == input
+  for input in ["\"\\u12xz\"", "\"\\ud83d\\u12xz\"", "\"\\ud83d\\u12\""]:
+    doAssertRaises JsonParsingError:
+      discard fromJson(input, string)
+    doAssertRaises JsonParsingError:
+      discard fromJson(input, RawJson)

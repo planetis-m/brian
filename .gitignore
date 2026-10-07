@@ -11,6 +11,8 @@ nimcache/
 # Focused Cachegrind benchmark executables.
 /bench/strings_plain
 /bench/strings_escaped
+/bench/unicode_typed
+/bench/unicode_raw
 /bench/objects_known
 /bench/unknown_skip
 /bench/integers
