@@ -14,9 +14,7 @@ without building a JSON DOM or scalar token objects.
 - **Low overhead.** The parser borrows ordinary object keys from the input and
   writes into the final output buffer.
 - **Strict where it matters.** Brian rejects malformed structure, broken Unicode
-  escapes, integer overflow, type mismatches, and
-  trailing data.
-- **Standalone.** Brian does not depend on jsonx, jsony, or their internals.
+  escapes, integer overflow, type mismatches, and trailing data.
 
 ## Install
 
@@ -117,12 +115,6 @@ string escapes. It preserves object field order; it does not sort keys.
 
 Values parsed into `RawJson` are validated. Manually constructing a `RawJson`
 marks its bytes as trusted, so only do that with a complete valid JSON value.
-
-Escaped unpaired surrogates are accepted, as permitted by the JSON grammar.
-`RawJson` preserves their escapes. String decoding combines valid surrogate
-pairs and preserves unpaired code units using the same three-byte encoding
-already used for lone low surrogates. Such strings are byte strings, not valid
-Unicode UTF-8; Brian does not replace their contents with U+FFFD.
 
 ## Custom JSON shapes
 

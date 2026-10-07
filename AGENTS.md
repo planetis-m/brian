@@ -27,9 +27,7 @@
 
 - Reject malformed structural JSON, malformed escapes, integer overflow,
   and trailing data.
-- Escaped unpaired surrogate code units are permitted by the JSON grammar.
-  Preserve them in `RawJson`; typed strings retain their byte representation
-  consistently for both high and low surrogates, without replacement.
+- Escaped unpaired surrogate code units are preserved as-is, never replaced.
 - Validate malformed external JSON, not Brian's own low-level API sequencing.
   Do not charge hot paths for redundant internal state checks.
 - Keep validation no stricter than Nim's `std/parsejson` unless an intentional,
