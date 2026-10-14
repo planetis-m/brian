@@ -1,24 +1,29 @@
-import std/os
+import std/[os, syncio]
 
-proc run(command: string) =
-  if execShellCmd(command) != 0:
-    quit "FAILURE " & command
+# Run from the repository root: `nimony c -r tests/tester.nim`.
 
-let testDir = getCurrentDir() / "tests"
-let commands = [
-  "nim c -r -d:debug",
-  "nim c -r -d:release",
-  "nim c -r -d:danger",
-  "nim c -r -d:release --strings:sso",
-  "nim c -r -d:danger --strings:sso",
-  "ASAN_OPTIONS=detect_leaks=0 nim c -r -d:release -g -d:addressSanitizer",
-  "ASAN_OPTIONS=detect_leaks=0 nim c -r -d:release -g -d:addressSanitizer --strings:sso"
-]
+const
+  Tests = ["tbrian", "tfloats"]
+  # Nimony strings are always SSO, so there is no string-layout variant to
+  # cover. ASan sees the stack, globals and libc calls; heap blocks come from
+  # Nimony's own allocator, which ASan does not instrument.
+  # `--cc` rejects flags, so they live in a compiler wrapper.
+  Asan = "--cc:tests/asan-gcc"
+  Configs = [
+    ("debug", ""),
+    ("release", "-d:release"),
+    ("danger", "-d:danger"),
+    ("asan", "-d:release " & Asan)
+  ]
 
-for path in walkFiles(testDir / "t*.nim"):
-  if path.extractFilename != "tester.nim":
-    for command in commands:
-      echo "Testing ", path.extractFilename, " with ", command
-      run command & " " & quoteShell(path)
+proc main() =
+  for test in Tests:
+    for (name, flags) in Configs:
+      echo "Testing ", test, " with ", name
+      let command = "ASAN_OPTIONS=detect_leaks=0 nimony c -r " & flags &
+        " --nimcache:tests/nimcache/" & name & " tests/" & test & ".nim"
+      if execShellCmd(command) != 0:
+        quit "FAILURE " & command
+  echo "All test configurations completed."
 
-echo "All test configurations completed."
+main()

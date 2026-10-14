@@ -204,32 +204,18 @@ with `w.escapeJson`, and delegate values back to `writeJson`.
 - JSON strings map to `string` and enums.
 - JSON numbers map to Nim integer and floating-point types with checked integer
   conversion.
-- JSON arrays map to `seq`, `array`, unnamed tuples, `set`, `HashSet`, and
-  `OrderedSet`.
-- JSON objects map to objects, named tuples, `Table[string, T]`, and
-  `OrderedTable[string, T]`.
-- JSON `null` maps to `none(T)` and `nil` for reference objects.
+- JSON arrays map to `seq`, `array`, unnamed tuples, `set`, and `HashSet`.
+- JSON objects map to objects, named tuples, and `Table[string, T]`.
+- JSON `null` maps to `none(T)` and `nil` for `nil ref` types.
 
 Import `std/options`, `std/sets`, or `std/tables` when using the corresponding
 Nim container type.
 
 ## Performance
 
-Cachegrind instructions (`-d:release -g`) and times
-(`-d:danger`, default strings; median of 15 runs):
-
-| Library | Read (CG) | Write (CG) | Read 2M | Write 10M |
-| --- | ---: | ---: | ---: | ---: |
-| Brian | 131.25M | 72.69M | 0.43 s | 0.57 s |
-| jsonx | 165.64M | 242.43M | 0.70 s | 2.51 s |
-| jsony | 166.30M | 98.73M | 0.70 s | 0.82 s |
-
-Lower is better.
-
-These are focused microbenchmarks, not a promise that every payload has the same
-ratio. The programs in [`bench/`](bench/) isolate strings, numbers, objects,
+The programs in [`bench/`](bench/) isolate strings, numbers, objects,
 containers, unknown-field skipping, raw JSON, and writing paths so changes can
-be measured one dimension at a time.
+be measured one dimension at a time with Cachegrind instruction counts.
 
 ## API at a glance
 
@@ -247,17 +233,17 @@ be measured one dimension at a time.
 
 ## Run the tests and benchmarks
 
-Run the full matrix, including debug, release, danger, both Nim string modes,
-and AddressSanitizer:
+Run the full matrix, including debug, release, danger, and AddressSanitizer,
+from the repository root:
 
 ```sh
-nim c -r -d:release tests/tester.nim
+nimony c -r tests/tester.nim
 ```
 
 Run one focused release benchmark from the repository root:
 
 ```sh
-nim c -d:release bench/objects_known.nim
+nimony c -d:release --outdir:bench bench/objects_known.nim
 valgrind --tool=cachegrind ./bench/objects_known
 ```
 

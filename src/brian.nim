@@ -345,54 +345,53 @@ template readFloat(p: var JsonParser; dst: untyped) =
 
 # ── containers ────────────────────────────────────────────────────────────
 
-proc beginObject(p: var JsonParser) =
+proc containerError(p: var JsonParser; msg: string; bracket: char) {.noinline.} =
+  p.parseError(msg & (if bracket == '{' or bracket == '}': "object" else: "array"))
+
+proc beginContainer(p: var JsonParser; open: char) {.inline.} =
+  ## Consumes `open`, which is `{` or `[`.
   p.skip()
-  if p.pos >= p.data.len or p.data[p.pos] != '{':
-    p.parseError("expected object")
+  if p.pos >= p.data.len or p.data[p.pos] != open:
+    p.containerError("expected ", open)
   elif p.depth > DepthLimit:
     p.parseError("maximum nesting depth exceeded")
   else:
     inc p.pos
     inc p.depth
 
-proc beginArray(p: var JsonParser) =
+proc nextItem(p: var JsonParser; first: var bool; close: char): bool {.inline.} =
+  ## Moves to the next item of an open container, or consumes `close`, which
+  ## is `}` or `]`, and returns false.
   p.skip()
-  if p.pos >= p.data.len or p.data[p.pos] != '[':
-    p.parseError("expected array")
-  elif p.depth > DepthLimit:
-    p.parseError("maximum nesting depth exceeded")
+  result = false
+  if p.pos >= p.data.len:
+    p.containerError("unterminated ", close)
+  elif first:
+    first = false
+    if p.data[p.pos] == close:
+      inc p.pos
+      dec p.depth
+    else:
+      result = true
+  elif p.data[p.pos] == close:
+    inc p.pos
+    dec p.depth
+  elif p.data[p.pos] != ',':
+    p.containerError("expected comma or end of ", close)
   else:
     inc p.pos
-    inc p.depth
+    p.skip()
+    if p.pos < p.data.len and p.data[p.pos] == close:
+      p.containerError("trailing comma in ", close)
+    else:
+      result = true
 
 proc nextField(p: var JsonParser; first: var bool; nameStart, nameStop: var int;
                escaped: var bool; name: var string): bool =
   ## Moves to the next field of an open object and leaves the cursor at its
   ## value. An unescaped name is `p.data[nameStart ..< nameStop]`; an escaped
   ## one is decoded into `name`.
-  p.skip()
-  result = false
-  if p.pos >= p.data.len:
-    p.parseError("unterminated object")
-  elif first:
-    first = false
-    if p.data[p.pos] == '}':
-      inc p.pos
-      dec p.depth
-    else:
-      result = true
-  elif p.data[p.pos] == '}':
-    inc p.pos
-    dec p.depth
-  elif p.data[p.pos] != ',':
-    p.parseError("expected comma or end of object")
-  else:
-    inc p.pos
-    p.skip()
-    if p.pos < p.data.len and p.data[p.pos] == '}':
-      p.parseError("trailing comma in object")
-    else:
-      result = true
+  result = p.nextItem(first, '}')
   if result:
     if p.pos >= p.data.len or p.data[p.pos] != '"':
       p.parseError("expected string")
@@ -416,36 +415,11 @@ proc nextField(p: var JsonParser; first: var bool; nameStart, nameStop: var int;
       else:
         inc p.pos
 
-proc nextElement(p: var JsonParser; first: var bool): bool =
-  p.skip()
-  result = false
-  if p.pos >= p.data.len:
-    p.parseError("unterminated array")
-  elif first:
-    first = false
-    if p.data[p.pos] == ']':
-      inc p.pos
-      dec p.depth
-    else:
-      result = true
-  elif p.data[p.pos] == ']':
-    inc p.pos
-    dec p.depth
-  elif p.data[p.pos] != ',':
-    p.parseError("expected comma or end of array")
-  else:
-    inc p.pos
-    p.skip()
-    if p.pos < p.data.len and p.data[p.pos] == ']':
-      p.parseError("trailing comma in array")
-    else:
-      result = true
-
 iterator jsonFields*(p: var JsonParser): openArray[char] {.sideEffect.} =
   ## Iterates object-field names and leaves `p` at the corresponding value.
   ##
   ## Each name is borrowed and remains valid only during the current iteration.
-  p.beginObject()
+  p.beginContainer('{')
   var first = true
   var start = 0
   var stop = 0
@@ -489,8 +463,8 @@ proc skipString(p: var JsonParser) =
     if not closed:
       p.parseError("unterminated string")
 
-proc skipValue(p: var JsonParser) =
-  # Validates and discards exactly one value without materializing a DOM.
+proc skipJson*(p: var JsonParser) =
+  ## Consumes and validates one JSON value without materializing it.
   p.skip()
   if p.pos >= p.data.len:
     p.parseError("expected value")
@@ -504,11 +478,11 @@ proc skipValue(p: var JsonParser) =
     of '-', '.', '0'..'9':
       discard p.scanNumber()
     of '[':
-      p.beginArray()
+      p.beginContainer('[')
       var first = true
-      while p.nextElement(first): p.skipValue()
+      while p.nextItem(first, ']'): p.skipJson()
     of '{':
-      for _ in p.jsonFields: p.skipValue()
+      for _ in p.jsonFields: p.skipJson()
     else:
       p.parseError("expected value")
 
@@ -528,10 +502,6 @@ proc kind*(p: var JsonParser): JsonKind =
     of '{': result = jkObject
     of '-', '.', '0'..'9': result = jkNumber
     else: p.parseError("expected value")
-
-proc skipJson*(p: var JsonParser) =
-  ## Consumes and validates one JSON value.
-  p.skipValue()
 
 proc finish(p: var JsonParser) =
   if p.depth != 0:
@@ -614,9 +584,9 @@ proc readJson*[T: JsonReadable](dst: var Option[T]; p: var JsonParser;
 
 proc readJson*[T: JsonReadable](dst: var seq[T]; p: var JsonParser;
                   unknownFields: UnknownFieldPolicy) =
-  p.beginArray()
+  p.beginContainer('[')
   var first = true
-  while p.nextElement(first):
+  while p.nextItem(first, ']'):
     dst.add default(T)
     let last = dst.len - 1
     if last >= 0:
@@ -624,18 +594,18 @@ proc readJson*[T: JsonReadable](dst: var seq[T]; p: var JsonParser;
 
 proc readJson*[T: Ordinal and JsonReadable](dst: var set[T]; p: var JsonParser;
                   unknownFields: UnknownFieldPolicy) =
-  p.beginArray()
+  p.beginContainer('[')
   var first = true
-  while p.nextElement(first):
+  while p.nextItem(first, ']'):
     var item = default(T)
     readJson(item, p, unknownFields)
     dst.incl item
 
 proc readJson*[T: Keyable and JsonReadable](dst: var HashSet[T]; p: var JsonParser;
                   unknownFields: UnknownFieldPolicy) =
-  p.beginArray()
+  p.beginContainer('[')
   var first = true
-  while p.nextElement(first):
+  while p.nextItem(first, ']'):
     var item = default(T)
     readJson(item, p, unknownFields)
     dst.incl item
@@ -653,14 +623,14 @@ proc lengthError(p: var JsonParser; length: int) {.noinline.} =
 
 proc readJson*[I; T: JsonReadable](dst: var array[I, T]; p: var JsonParser;
                      unknownFields: UnknownFieldPolicy) =
-  p.beginArray()
+  p.beginContainer('[')
   var first = true
   for item in mitems(dst):
-    if p.nextElement(first):
+    if p.nextItem(first, ']'):
       readJson(item, p, unknownFields)
     elif not p.failed:
       p.lengthError(dst.len)
-  if p.nextElement(first):
+  if p.nextItem(first, ']'):
     p.lengthError(dst.len)
 
 proc readObjectFields[T: object|tuple](dst: var T; p: var JsonParser;
@@ -675,7 +645,7 @@ proc readObjectFields[T: object|tuple](dst: var T; p: var JsonParser;
       if unknownFields == ufReject:
         p.parseError("expected known field, got \"" & $name & "\"")
       else:
-        p.skipValue()
+        p.skipJson()
 
 proc isNamedTuple[T: tuple](value: T): bool {.inline.} =
   # Nimony names the fields of an anonymous tuple `Field1`, `Field2`, ...
@@ -690,15 +660,17 @@ proc readJson*[T: tuple](dst: var T; p: var JsonParser;
   if isNamedTuple(dst):
     readObjectFields(dst, p, unknownFields)
   else:
-    p.beginArray()
+    var length = 0
+    for field in fields(dst): inc length
+    p.beginContainer('[')
     var first = true
     for field in fields(dst):
-      if p.nextElement(first):
+      if p.nextItem(first, ']'):
         readJson(field, p, unknownFields)
       elif not p.failed:
-        p.parseError("expected tuple with the expected number of elements")
-    if p.nextElement(first):
-      p.parseError("expected tuple with the expected number of elements")
+        p.lengthError(length)
+    if p.nextItem(first, ']'):
+      p.lengthError(length)
 
 proc readJson*[T: object](dst: var T; p: var JsonParser;
                           unknownFields: UnknownFieldPolicy) =
@@ -714,13 +686,6 @@ proc readJson*[T: JsonReadable](dst: var (nil ref T); p: var JsonParser;
     if dst != nil:
       readJson(dst[], p, unknownFields)
 
-proc readJson*(dst: var RawJson; p: var JsonParser; unknownFields: UnknownFieldPolicy) =
-  p.skip()
-  let start = p.pos
-  p.skipValue()
-  if not p.failed:
-    dst = RawJson(toString(p.data, start, p.pos))
-
 # ── writer ────────────────────────────────────────────────────────────────
 
 proc write*(w: var JsonWriter; value: string) {.inline.} =
@@ -731,6 +696,11 @@ proc write*(w: var JsonWriter; value: string) {.inline.} =
 
 proc put(w: var JsonWriter; c: char) {.inline.} =
   w.data.add c
+
+proc putComma(w: var JsonWriter; comma: var bool) {.inline.} =
+  ## Separates every item from the previous one.
+  if comma: w.put ','
+  else: comma = true
 
 proc escapeJson(w: var JsonWriter; data: openArray[char]) =
   const HexChars = "0123456789ABCDEF"
@@ -799,8 +769,7 @@ template writeArray(w: var JsonWriter; value: untyped) =
   w.put '['
   var comma = false
   for item in value:
-    if comma: w.put ','
-    else: comma = true
+    w.putComma(comma)
     writeJson(w, item)
   w.put ']'
 
@@ -815,8 +784,7 @@ proc writeJson*[T: Ordinal and JsonWritable](w: var JsonWriter; value: set[T]) =
   var comma = false
   for item in low(T)..high(T):
     if item in value:
-      if comma: w.put ','
-      else: comma = true
+      w.putComma(comma)
       writeJson(w, item)
   w.put ']'
 
@@ -827,8 +795,7 @@ proc writeJson*[T: JsonWritable](w: var JsonWriter; value: Table[string, T]) =
   w.put '{'
   var comma = false
   for key, item in pairs(value):
-    if comma: w.put ','
-    else: comma = true
+    w.putComma(comma)
     w.escapeJson(key)
     w.put ':'
     writeJson(w, item)
@@ -838,8 +805,7 @@ proc writeObject[T: object|tuple](w: var JsonWriter; value: T) {.inline.} =
   w.put '{'
   var comma = false
   for name, field in fieldPairs(value):
-    if comma: w.put ','
-    else: comma = true
+    w.putComma(comma)
     w.put '"'
     w.write name
     w.write "\":"
@@ -853,8 +819,7 @@ proc writeJson*[T: tuple](w: var JsonWriter; value: T) =
     w.put '['
     var comma = false
     for field in fields(value):
-      if comma: w.put ','
-      else: comma = true
+      w.putComma(comma)
       writeJson(w, field)
     w.put ']'
 
@@ -866,6 +831,15 @@ proc writeJson*[T: JsonWritable](w: var JsonWriter; value: (nil ref T)) =
     w.write "null"
   else:
     writeJson(w, value[])
+
+# ── raw values ────────────────────────────────────────────────────────────
+
+proc readJson*(dst: var RawJson; p: var JsonParser; unknownFields: UnknownFieldPolicy) =
+  p.skip()
+  let start = p.pos
+  p.skipJson()
+  if not p.failed:
+    dst = RawJson(toString(p.data, start, p.pos))
 
 proc writeJson*(w: var JsonWriter; value: RawJson) =
   w.write string(value)
@@ -887,21 +861,19 @@ proc canonicalizeValue(p: var JsonParser; w: var JsonWriter) =
     let start = p.scanNumber()
     w.data.addSpan(p.data, start, p.pos)
   of jkArray:
-    p.beginArray()
+    p.beginContainer('[')
     w.put '['
     var comma = false
     var first = true
-    while p.nextElement(first):
-      if comma: w.put ','
-      else: comma = true
+    while p.nextItem(first, ']'):
+      w.putComma(comma)
       p.canonicalizeValue(w)
     w.put ']'
   of jkObject:
     w.put '{'
     var comma = false
     for name in p.jsonFields:
-      if comma: w.put ','
-      else: comma = true
+      w.putComma(comma)
       w.escapeJson(name)
       w.put ':'
       p.canonicalizeValue(w)
@@ -970,9 +942,9 @@ iterator jsonItems*[T: JsonReadable](input: string;
   ## Iterates the values in one top-level JSON array: `for x in jsonItems[T](s)`.
   ## Raises `ValueError` after the last good item when the input is malformed.
   var reader = JsonParser(data: input, pos: 0, depth: 0, failed: false, errorMsg: "")
-  reader.beginArray()
+  reader.beginContainer('[')
   var first = true
-  while reader.nextElement(first):
+  while reader.nextItem(first, ']'):
     var value = default(T)
     readJson(value, reader, unknownFields)
     if not reader.failed:

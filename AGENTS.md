@@ -60,9 +60,11 @@
 Run the complete test matrix after functional changes:
 
 ```sh
-nim c -r -d:release tests/tester.nim
+nimony c -r tests/tester.nim
 ```
 
-The tester covers debug, release, danger, both SSO variants, and AddressSanitizer.
+The tester covers debug, release, danger, and AddressSanitizer. Nimony strings
+are always SSO, so there is no string-layout variant. ASan does not see inside
+Nimony's own heap allocator; it covers the stack, globals, and libc calls.
 Do not weaken ASan configuration or add ownership workarounds solely to hide a
 known compiler cleanup-on-raise issue.

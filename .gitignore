@@ -1,35 +1,9 @@
-# Nim compiler caches and platform-specific executables.
+# Nimony build caches and platform-specific executables.
 nimcache/
 *.exe
 
-# Local test executables.
-/tests/tester
-/tests/tbrian
-/tests/tfloats
-/tests/tfloats_portable
-
-# Focused Cachegrind benchmark executables.
-/bench/strings_plain
-/bench/strings_escaped
-/bench/objects_known
-/bench/unknown_skip
-/bench/integers
-/bench/floats_fast
-/bench/floats_fallback
-/bench/raw_values
-/bench/write_strings
-/bench/write_integers
-/bench/write_objects
-/bench/write_raw
-
-# Local dependencies and generated configuration for cross-library benchmarks.
-/bench/compare/deps/
-/bench/compare/atlas.lock
-/bench/compare/nim.cfg
-/bench/compare/nimcache/
-/bench/compare/objects_read_*
-/bench/compare/objects_write_*
-
-# Float-power generation and reproducible benchmark helpers.
-__pycache__/
-/bench/kostya/kostya_brian
+# Focused Cachegrind benchmark executables (built with `--outdir:bench`).
+/bench/*
+!/bench/*.nim
+!/bench/README.md
+!/bench/nimony.paths

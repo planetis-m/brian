@@ -1,0 +1,3 @@
+#!/bin/sh
+# C compiler and linker for the tester's AddressSanitizer configuration.
+exec gcc -g -fsanitize=address -fno-omit-frame-pointer "$@"

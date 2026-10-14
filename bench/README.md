@@ -4,16 +4,12 @@ Each program isolates one parsing path. They intentionally print only a
 checksum, never elapsed time. Profile one program at a time with Cachegrind:
 
 ```sh
-nim c -d:release -g -r strings_plain.nim
+nimony c -d:release --outdir:. strings_plain.nim
 valgrind --tool=cachegrind ./strings_plain
 ```
 
 Use `-d:danger` only as an additional correctness/configuration check; compare
 instruction profiles from the same release build and fixed payload.
-
-For matched Brian/jsonx/jsony object comparisons, see
-[`compare/README.md`](compare/README.md). Its dependencies and local compiler
-paths are intentionally kept out of the repository.
 
 - `strings_plain` — unescaped string fast path and destination allocation.
 - `strings_escaped` — escape decoding and Unicode escape handling.
@@ -27,8 +23,8 @@ paths are intentionally kept out of the repository.
 - `tuples` — positional tuple field traversal.
 - `sets` — hashed set construction from an array.
 - `tables` — string-keyed table construction from an object.
-- `floats_fast` — exact scalar float fast path.
-- `floats_fallback` — exact float fallback conversion.
+- `floats_fast` — short decimals that `parseFloat` converts on its exact fast path.
+- `floats_fallback` — long mantissas past the fast path (Eisel–Lemire).
 - `raw_values` — `RawJson` capture through value skipping.
 - `canonical_fields` — canonical re-emission of ordinary and escaped object fields.
 - `write_strings` — direct escaping of plain and escaped strings.

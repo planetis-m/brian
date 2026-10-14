@@ -343,6 +343,12 @@ proc errorMessages() {.raises.} =
   check msg == "JSON at byte 5: expected digit", msg
   check not tryFromJson("[1,2", value, msg)
   check msg.endsWith("unterminated array"), msg
+  var triple = (0, "", false)
+  check not tryFromJson("[1,\"x\"]", triple, msg)
+  check msg.endsWith("expected array with 3 elements"), msg
+  var page = default(Page)
+  check not tryFromJson("{\"number\":1,}", page, msg)
+  check msg.endsWith("trailing comma in object"), msg
 
 proc holeyEnums() {.raises.} =
   # Holes between members spell as "" and must never match.
