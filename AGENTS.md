@@ -5,9 +5,11 @@
 
 ## Design
 
-- Preserve the small public model: `fromJson`, `toJson`, overloaded
-  `readJson`, overloaded `writeJson`, `RawJson`, `CanonRawJson`, and the
-  minimal parser/writer surface needed by custom types.
+- Preserve the small public model: `fromJson`, `jsonLines`, `toJson`,
+  overloaded `readJson`, overloaded `writeJson`, `RawJson`, `CanonRawJson`,
+  `JsonError`, and the minimal parser/writer surface needed by custom types.
+- Decoding does not raise. The parser keeps its first error; `fromJson` and
+  `jsonLines` return it in a `Result`.
 - Customization is ordinary Nim overloads. Do not add hooks, visitors, source
   hierarchies, token streams, runtime polymorphism, or registration systems.
 - Keep parsing direct and typed. Do not build a DOM or scalar token objects.

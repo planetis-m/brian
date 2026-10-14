@@ -1,4 +1,5 @@
 import brian
+import std/result
 import std/[assertions, syncio]
 
 template check(cond: bool) =
@@ -15,7 +16,11 @@ proc main() {.raises.} =
   let payload = makePayload()
   var checksum = 0
   for _ in 0..<100:
-    checksum += string(fromJson(payload, CanonRawJson)).len
+    case fromJson(payload, CanonRawJson)
+    of Ok(value):
+      checksum += string(value).len
+    of Err(_):
+      check false
   echo checksum
 
 try:

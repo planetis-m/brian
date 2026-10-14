@@ -15,6 +15,8 @@ without building a JSON DOM or scalar token objects.
   writes into the final output buffer.
 - **Strict where it matters.** Brian rejects malformed structure, broken Unicode
   escapes, integer overflow, type mismatches, and trailing data.
+- **No exceptions.** `fromJson` and `toJson` return a `Result` holding either
+  the value or the first error and the byte where it was found.
 
 ## Install
 
@@ -39,6 +41,7 @@ nimble install https://github.com/planetis-m/brian
 ## Quick start
 
 ```nim
+import std/[result, syncio]
 import brian
 
 type
@@ -47,14 +50,20 @@ type
     age: int
     active: bool
 
-let person = fromJson(
-  """{"name":"Ada","age":37,"active":true}""", Person)
-
-echo person.name
-echo toJson(person)
+case fromJson("""{"name":"Ada","age":37,"active":true}""", Person)
+of Ok(person):
+  echo person.name
+  echo toJson(person).get("")
+of Err(e):
+  echo $e
 # Ada
 # {"name":"Ada","age":37,"active":true}
 ```
+
+A failed decode reports the first error: `e.kind` says what went wrong,
+`e.pos` is the byte offset into the input, and `$e` spells it out as
+`JSON at byte 12: expected colon`. `toJson` fails the same way for values
+JSON cannot represent, such as NaN, reporting the output byte instead.
 
 Object fields are matched by name. Unknown fields are skipped by default, which
 makes readers tolerant of additive API changes. Ask for an exact shape when you
@@ -65,15 +74,15 @@ let compatible = fromJson(payload, Person)
 let exact = fromJson(payload, Person, unknownFields = ufReject)
 ```
 
-Both modes still validate known values and malformed JSON. Parse failures raise
-`JsonParsingError`.
+Both modes still validate known values and malformed JSON.
 
-## Read a large top-level array one item at a time
+## Read JSON Lines
 
-`jsonItems` decodes each item directly instead of first creating a `seq` for the
-whole array:
+`jsonLines` decodes one value per line. Every line gets its own result, so a
+malformed line does not stop the rest; empty lines are skipped:
 
 ```nim
+import std/[result, syncio]
 import brian
 
 type
@@ -81,13 +90,13 @@ type
     id: int
     name: string
 
-for event in jsonItems(
-    """[{"id":1,"name":"opened"},{"id":2,"name":"closed"}]""", Event):
-  echo event.id, ": ", event.name
+for line in jsonLines[Event]("{\"id\":1,\"name\":\"opened\"}\n{\"id\":2,\"name\":\"closed\"}\n"):
+  case line
+  of Ok(event): echo event.id, ": ", event.name
+  of Err(e): echo $e
 ```
 
-The input is still one contiguous string; iteration avoids materializing the
-outer collection, not buffering the input itself.
+Error positions count from the start of the whole input, not the line.
 
 ## Keep JSON you do not want to model
 
@@ -104,10 +113,10 @@ type
     schema: RawJson
 
 let tool = fromJson(
-  """{"name":"search","schema": { "type": "object" }}""", Tool)
+  """{"name":"search","schema": { "type": "object" }}""", Tool).get(Tool())
 
 echo $tool.schema        # { "type": "object" }
-echo toJson(tool)        # {"name":"search","schema":{ "type": "object" }}
+echo toJson(tool).get("") # {"name":"search","schema":{ "type": "object" }}
 ```
 
 `CanonRawJson` instead re-emits a whitespace-free representation and decodes
@@ -144,7 +153,7 @@ proc readJson(dst: var Content; p: var JsonParser; unknownFields: UnknownFieldPo
     dst = Content(kind: parts)
     readJson(dst.items, p, unknownFields)
   else:
-    p.raiseParseError("expected string or array")
+    p.parseError("expected string or array")
 
 proc writeJson(w: var JsonWriter; value: Content) =
   case value.kind
@@ -153,13 +162,15 @@ proc writeJson(w: var JsonWriter; value: Content) =
   of parts:
     writeJson(w, value.items)
 
-let content = fromJson("[\"first\",\"second\"]", Content)
-echo toJson(content) # ["first","second"]
+let content = fromJson("[\"first\",\"second\"]", Content).get(Content())
+echo toJson(content).get("") # ["first","second"]
 ```
 
-Custom object readers use one iterator over borrowed `StringSpan` keys. Compare
-keys directly without allocating, and handle unknown values according to the
-supplied policy:
+Custom object readers use one iterator over borrowed `openArray[char]` keys.
+Compare keys directly without allocating, and handle unknown values according
+to the supplied policy. `parseError` records a failure; the parser keeps the
+first one and turns every later read into a no-op, so readers need no early
+returns:
 
 ```nim
 type
@@ -174,13 +185,13 @@ proc readJson(dst: var Page; p: var JsonParser; unknownFields: UnknownFieldPolic
     elif field == "status":
       readJson(dst.status, p, unknownFields)
     elif unknownFields == ufReject:
-      p.raiseParseError("expected known field, got \"" & $field & "\"")
+      p.parseError("expected known field, got \"" & $field & "\"")
     else:
       p.skipJson()
 ```
 
-`StringSpan` is a non-owning view. Compare it during the current iteration, or
-use `$field` to create an owned string before retaining the key.
+A key is a non-owning view. Compare it during the current iteration, or use
+`$field` to create an owned string before retaining it.
 
 Enum strings are matched exactly and case-sensitively against their Nim
 spellings, including custom spellings such as `inProgress = "in_progress"`.
@@ -197,7 +208,8 @@ proc readJson(dst: var ResponseStatus; p: var JsonParser;
 ```
 
 Custom writers can append JSON syntax with `w.write`, escape keys or strings
-with `w.escapeJson`, and delegate values back to `writeJson`.
+with `w.escapeJson`, delegate values back to `writeJson`, and reject a value
+with `w.writeError(msg)`.
 
 ## Supported mappings
 
@@ -219,14 +231,15 @@ be measured one dimension at a time with Cachegrind instruction counts.
 
 ## API at a glance
 
-- `fromJson(input, T)` returns a decoded value.
-- `fromJson(input, dst)` decodes into an existing value.
-- `fromFile(path, T)` decodes a JSON file.
-- `toJson(value)` returns the encoded string.
-- `jsonItems(input, T)` iterates a top-level array.
+- `fromJson(input, T)` returns a `Result[T, JsonError]`.
+- `jsonLines[T](input)` yields one `Result[T, JsonError]` per JSON Lines line.
+- `JsonError` holds the error `kind` and byte `pos`; `$` formats it.
+- `toJson(value)` returns a `Result[string, JsonError]`.
 - `readJson(dst, parser, policy)` customizes decoding.
 - `readJson(dst, parser, policy, fallback)` reads an enum with an unknown-value fallback.
-- `parser.jsonFields` iterates borrowed `StringSpan` object keys.
+- `parser.jsonFields` iterates borrowed `openArray[char]` object keys.
+- `parser.parseError(msg)` records a custom decoding failure.
+- `writer.writeError(msg)` records a custom encoding failure.
 - `writeJson(writer, value)` customizes encoding.
 - `RawJson` preserves a captured JSON representation.
 - `CanonRawJson` produces a compact normalized representation.

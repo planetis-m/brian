@@ -1,4 +1,5 @@
 import brian
+import std/result
 import std/[assertions, syncio]
 
 template check(cond: bool) =
@@ -13,8 +14,16 @@ proc main() {.raises.} =
 
   var checksum = 0
   for iteration in 0..<200:
-    checksum += toJson(plain).len
-    checksum += toJson(escaped).len
+    case toJson(plain)
+    of Ok(text):
+      checksum += text.len
+    of Err(_):
+      check false
+    case toJson(escaped)
+    of Ok(text):
+      checksum += text.len
+    of Err(_):
+      check false
   echo checksum
 
 try:

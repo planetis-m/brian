@@ -1,25 +1,29 @@
 # Brian reads numbers with `std/parseutils.parseFloat`, which rounds correctly
 # to each width; these cases check that every token reaches it intact.
-import std/[assertions, parseutils, random, strutils]
+import std/[assertions, parseutils, random, result, strutils]
 import brian
 
 template check(cond: bool; msg = "") =
   # Unlike `assert`, never compiled out.
   if not cond: raiseAssert(msg)
 
+proc decoded[T](input: string; typ: typedesc[T]): T {.untyped, raises.} =
+  # `case` on a Result does not compile in an untyped generic yet.
+  let decoded = fromJson(input, T)
+  if decoded.isErr: raiseAssert($decoded.error(JsonError()))
+  result = decoded.unsafeGet
+
 proc rejects[T](input: string; typ: typedesc[T]): bool {.untyped.} =
-  var dst = default(T)
-  var msg = ""
-  result = not tryFromJson(input, dst, msg)
+  fromJson(input, T).isErr
 
 proc checkNumber(text: string) {.raises.} =
   var expected = 0.0
   check parseFloat(text, expected) == text.len, text
-  check cast[uint64](fromJson(text, float64)) == cast[uint64](expected), text
+  check cast[uint64](decoded(text, float64)) == cast[uint64](expected), text
   # float32 is rounded once, directly from the decimal text.
   var expected32 = 0.0'f32
   check parseFloat(text, expected32) == text.len, text
-  check cast[uint32](fromJson(text, float32)) == cast[uint32](expected32), text
+  check cast[uint32](decoded(text, float32)) == cast[uint32](expected32), text
 
 proc exactBits() {.raises.} =
   for (text, bits) in [
@@ -35,7 +39,7 @@ proc exactBits() {.raises.} =
     ("-0.0", 0x8000000000000000'u64),
     ("0e0", 0'u64),
     ("0e999999", 0'u64)]:
-    check cast[uint64](fromJson(text, float64)) == bits, text
+    check cast[uint64](decoded(text, float64)) == bits, text
     checkNumber(text)
 
 proc roundingAndFallback() {.raises.} =
@@ -90,7 +94,7 @@ proc deterministicDecimals() {.raises.} =
     checkNumber(text)
 
 proc permissiveGrammar() {.raises.} =
-  check cast[uint64](fromJson("-0e999999999999999999999", float64)) ==
+  check cast[uint64](decoded("-0e999999999999999999999", float64)) ==
     0x8000000000000000'u64
   # A number is whatever `parseFloat` reads: a token without digits is none.
   for text in [".", "-.", "e1", ".e1", "-.e1"]:
@@ -99,7 +103,7 @@ proc permissiveGrammar() {.raises.} =
                "009007199254740993.0", "9007199254740993."]:
     var expected = 0.0
     check parseFloat(text, expected) == text.len
-    check cast[uint64](fromJson(text, float64)) == cast[uint64](expected)
+    check cast[uint64](decoded(text, float64)) == cast[uint64](expected)
   for text in ["", "-", "1e", "1e+", "1e-", "1.2.3", "1e3junk"]:
     check rejects(text, float64), text
 
@@ -130,7 +134,7 @@ proc cachedRoundingBoundaries() {.raises.} =
   # Brian intentionally preserves the zero sign even when stdlib's huge
   # exponent handling loses it. This behavior predates cached conversion.
   for exponent in ["999999", "-999999"]:
-    check cast[uint64](fromJson("-0e" & exponent, float64)) ==
+    check cast[uint64](decoded("-0e" & exponent, float64)) ==
       0x8000000000000000'u64
 
 proc main() {.raises.} =

@@ -1,4 +1,5 @@
 import brian
+import std/result
 import std/[assertions, syncio]
 
 template check(cond: bool) =
@@ -15,9 +16,12 @@ proc main() {.raises.} =
   let payload = makePayload()
   var checksum = 0
   for iteration in 0..<100:
-    let values = fromJson(payload, seq[RawJson])
-    check values.len == 200
-    checksum += string(values[iteration mod values.len]).len
+    case fromJson(payload, seq[RawJson])
+    of Ok(values):
+      check values.len == 200
+      checksum += string(values[iteration mod values.len]).len
+    of Err(_):
+      check false
   echo checksum
 
 try:

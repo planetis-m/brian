@@ -1,5 +1,6 @@
 import std/strutils
 import brian
+import std/result
 import std/[assertions, syncio]
 
 template check(cond: bool) =
@@ -17,9 +18,12 @@ proc main() {.raises.} =
   let payload = "[" & "\"in_progress\",".repeat(Count - 1) & "\"in_progress\"]"
   var checksum = 0
   for iteration in 0..<20:
-    let values = fromJson(payload, seq[ResponseStatus])
-    check values.len == Count
-    checksum += ord(values[iteration])
+    case fromJson(payload, seq[ResponseStatus])
+    of Ok(values):
+      check values.len == Count
+      checksum += ord(values[iteration])
+    of Err(_):
+      check false
   echo checksum
 
 try:
