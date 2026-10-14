@@ -50,6 +50,14 @@ type
   Triple = (int, string, bool)
   Three = array[3, int]
   Empty = array[0, int]
+  Holey = enum
+    first = 1, last = (5, "final")
+  Node = ref object
+    value: int
+    next: nil Node
+  Linked = object
+    head: nil Node
+    colours: set[Colour]
 
 proc readJson*(dst: var Page; p: var JsonParser;
                unknownFields: UnknownFieldPolicy) =
@@ -336,6 +344,23 @@ proc errorMessages() {.raises.} =
   check not tryFromJson("[1,2", value, msg)
   check msg.endsWith("unterminated array"), msg
 
+proc holeyEnums() {.raises.} =
+  # Holes between members spell as "" and must never match.
+  check fromJson("\"final\"", Holey) == last
+  check fromJson("\"first\"", Holey) == first
+  check toJson(last) == "\"final\""
+  check rejects("\"\"", Holey)
+  check rejects("\"other\"", Holey)
+
+proc nilRefsAndEnumSets() {.raises.} =
+  let input = """{"head":{"value":1,"next":{"value":2,"next":null}},"colours":["blue"]}"""
+  let linked = fromJson(input, Linked)
+  check linked.head != nil
+  check toJson(linked) == input
+  check toJson(fromJson("{\"head\":null,\"colours\":[]}", Linked)) ==
+    "{\"head\":null,\"colours\":[]}"
+  check rejects("{\"colours\":[\"green\"]}", Linked)
+
 proc main() {.raises.} =
   objectRoundTrip()
   customUnion()
@@ -357,6 +382,8 @@ proc main() {.raises.} =
   stringSerialization()
   surrogateCompatibility()
   errorMessages()
+  holeyEnums()
+  nilRefsAndEnumSets()
 
 try:
   main()

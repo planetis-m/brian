@@ -11,7 +11,7 @@
 
 {.feature: "staticContracts".}
 
-import std/[options, paths, sets, syncio, tables, typetraits]
+import std/[options, paths, sets, syncio, tables]
 from std/parseutils import parseFloat
 
 type
@@ -45,6 +45,12 @@ type
     ## A JSON value rewritten without insignificant whitespace.
     ##
     ## Object field order and number spellings are preserved.
+
+  JsonReadable = concept of HasDefault
+    proc readJson(dst: var Self; p: var JsonParser; unknownFields: UnknownFieldPolicy)
+
+  JsonWritable = concept
+    proc writeJson(w: var JsonWriter; value: Self)
 
 func `$`*(value: RawJson): string {.inline.} = string(value)
 func `$`*(value: CanonRawJson): string {.inline.} = string(value)
@@ -163,12 +169,12 @@ template scanStringRun(p: JsonParser) =
     inc pos
   p.pos = pos
 
-proc parseStringBody(p: var JsonParser; dst: var string; rawStart: var int;
-                     rawLength: var int; hadEscape: var bool) =
-  ## The cursor stands just past the opening quote. An unescaped string is
-  ## only located (`rawStart`, `rawLength`); with escapes it is decoded into
-  ## `dst`, which is cleared at the first one.
-  rawStart = p.pos
+proc parseStringBody(p: var JsonParser; dst: var string): bool =
+  ## The cursor stands just past the opening quote and ends just past the
+  ## closing one. Returns whether the string had escapes: if so it is decoded
+  ## into `dst`, which is cleared at the first one; otherwise `dst` is left
+  ## alone and the caller takes the bytes between the quotes from the input.
+  result = false
   var runStart = p.pos
   var closed = false
   while not closed and p.pos < p.data.len:
@@ -176,14 +182,13 @@ proc parseStringBody(p: var JsonParser; dst: var string; rawStart: var int;
     if p.pos < p.data.len:
       let c = p.data[p.pos]
       if c == '"':
-        rawLength = p.pos - rawStart
-        if hadEscape:
+        if result:
           dst.addSpan(p.data, runStart, p.pos)
         inc p.pos
         closed = true
       else: # a backslash
-        if not hadEscape:
-          hadEscape = true
+        if not result:
+          result = true
           dst.setLen(0)
         dst.addSpan(p.data, runStart, p.pos)
         inc p.pos
@@ -221,26 +226,21 @@ proc parseStringBody(p: var JsonParser; dst: var string; rawStart: var int;
   if not closed:
     p.parseError("unterminated string")
 
-proc parseString(p: var JsonParser; dst: var string; rawStart: var int;
-                 rawLength: var int; hadEscape: var bool) {.inline.} =
+proc openString(p: var JsonParser): bool {.inline.} =
+  ## Consumes the opening quote of the next value.
   p.skip()
-  if p.pos < p.data.len and p.data[p.pos] == '"':
+  result = p.pos < p.data.len and p.data[p.pos] == '"'
+  if result:
     inc p.pos
-    p.parseStringBody(dst, rawStart, rawLength, hadEscape)
   else:
     p.parseError("expected string")
 
 proc readString(p: var JsonParser; dst: var string) =
-  var start = 0
-  var length = 0
-  var escaped = false
-  var decoded = ""
-  p.parseString(decoded, start, length, escaped)
-  if escaped:
-    dst = move decoded
-  else:
-    dst.setLen(0)
-    dst.addSpan(p.data, start, start + length)
+  if p.openString():
+    let start = p.pos
+    if not p.parseStringBody(dst) and not p.failed:
+      dst.setLen(0)
+      dst.addSpan(p.data, start, p.pos - 1)
 
 proc consumeNull(p: var JsonParser): bool {.inline.} =
   p.skip()
@@ -333,15 +333,13 @@ proc readInt[T: SomeInteger](p: var JsonParser; dst: var T) =
         else:
           dst = T(value)
 
-proc readFloat[T: SomeFloat](p: var JsonParser; dst: var T) {.untyped.} =
+template readFloat(p: var JsonParser; dst: untyped) =
   # The number is whatever `parseFloat` reads.
   p.skip()
   let start = p.pos
-  var value: T = 0.0
-  let consumed = parseFloat(p.data.toOpenArray(start, p.data.len - 1), value)
+  let consumed = parseFloat(p.data.toOpenArray(start, p.data.len - 1), dst)
   if consumed > 0:
     p.pos = start + consumed
-    dst = value
   else:
     p.parseError("expected number")
 
@@ -367,11 +365,11 @@ proc beginArray(p: var JsonParser) =
     inc p.pos
     inc p.depth
 
-proc nextField(p: var JsonParser; first: var bool; nameStart, nameLength: var int;
+proc nextField(p: var JsonParser; first: var bool; nameStart, nameStop: var int;
                escaped: var bool; name: var string): bool =
   ## Moves to the next field of an open object and leaves the cursor at its
-  ## value. An unescaped name is located in the input (`nameStart`,
-  ## `nameLength`); an escaped one is decoded into `name`.
+  ## value. An unescaped name is `p.data[nameStart ..< nameStop]`; an escaped
+  ## one is decoded into `name`.
   p.skip()
   result = false
   if p.pos >= p.data.len:
@@ -406,14 +404,11 @@ proc nextField(p: var JsonParser; first: var bool; nameStart, nameLength: var in
       if p.pos < p.data.len and p.data[p.pos] == '"':
         escaped = false
         nameStart = start
-        nameLength = p.pos - start
+        nameStop = p.pos
         inc p.pos
       else:
         p.pos = start
-        escaped = false
-        var rawStart = 0
-        var rawLength = 0
-        p.parseStringBody(name, rawStart, rawLength, escaped)
+        escaped = p.parseStringBody(name)
       p.skip()
       if p.pos >= p.data.len or p.data[p.pos] != ':':
         p.parseError("expected colon")
@@ -453,34 +448,29 @@ iterator jsonFields*(p: var JsonParser): openArray[char] {.sideEffect.} =
   p.beginObject()
   var first = true
   var start = 0
-  var length = 0
+  var stop = 0
   var escaped = false
   var name = ""
-  while p.nextField(first, start, length, escaped, name):
+  while p.nextField(first, start, stop, escaped, name):
     if escaped:
       yield name.toOpenArray(0, name.len - 1)
     else:
-      yield p.data.toOpenArray(start, start + length - 1)
+      yield p.data.toOpenArray(start, stop - 1)
 
 iterator jsonStrings(p: var JsonParser): openArray[char] {.sideEffect.} =
   ## The next string value, borrowed (yielded once, or not at all on error).
-  var start = 0
-  var length = 0
-  var escaped = false
-  var decoded = ""
-  p.parseString(decoded, start, length, escaped)
-  if not p.failed:
-    if escaped:
-      yield decoded.toOpenArray(0, decoded.len - 1)
-    else:
-      yield p.data.toOpenArray(start, start + length - 1)
+  if p.openString():
+    let start = p.pos
+    var decoded = ""
+    let escaped = p.parseStringBody(decoded)
+    if not p.failed:
+      if escaped:
+        yield decoded.toOpenArray(0, decoded.len - 1)
+      else:
+        yield p.data.toOpenArray(start, p.pos - 2)
 
 proc skipString(p: var JsonParser) =
-  p.skip()
-  if p.pos >= p.data.len or p.data[p.pos] != '"':
-    p.parseError("expected string")
-  else:
-    inc p.pos
+  if p.openString():
     var closed = false
     while not closed and p.pos < p.data.len:
       scanStringRun(p)
@@ -518,13 +508,7 @@ proc skipValue(p: var JsonParser) =
       var first = true
       while p.nextElement(first): p.skipValue()
     of '{':
-      p.beginObject()
-      var first = true
-      var start = 0
-      var length = 0
-      var escaped = false
-      var name = ""
-      while p.nextField(first, start, length, escaped, name): p.skipValue()
+      for _ in p.jsonFields: p.skipValue()
     else:
       p.parseError("expected value")
 
@@ -568,11 +552,16 @@ proc readJson*[T: SomeInteger](dst: var T; p: var JsonParser;
                                unknownFields: UnknownFieldPolicy) =
   p.readInt(dst)
 
-proc readJson*[T: SomeFloat](dst: var T; p: var JsonParser;
-                             unknownFields: UnknownFieldPolicy) {.untyped.} =
+proc readJson*(dst: var float64; p: var JsonParser; unknownFields: UnknownFieldPolicy) {.inline.} =
   p.readFloat(dst)
 
-proc readEnum[T: enum](p: var JsonParser; dst: var T): bool {.untyped.} =
+proc readJson*(dst: var float32; p: var JsonParser; unknownFields: UnknownFieldPolicy) {.inline.} =
+  p.readFloat(dst)
+
+# Ordinal and holey enums need separate overloads: a checked generic over
+# `enum` cannot dispatch to either, and only ordinal enums iterate with `..`.
+
+proc readEnum[T: OrdinalEnum](p: var JsonParser; dst: var T): bool =
   ## Matches the next string against each value's exact spelling.
   result = false
   for name in p.jsonStrings:
@@ -581,20 +570,41 @@ proc readEnum[T: enum](p: var JsonParser; dst: var T): bool {.untyped.} =
         dst = e
         result = true
 
-proc readJson*[T: enum](dst: var T; p: var JsonParser;
-                        unknownFields: UnknownFieldPolicy) {.untyped.} =
-  if not p.readEnum(dst) and not p.failed:
-    p.parseError("expected a valid " & $T)
+proc readEnum[T: HoleyEnum](p: var JsonParser; dst: var T): bool =
+  ## Walks the ordinal range; holes spell as "", so an empty name never matches.
+  result = false
+  for name in p.jsonStrings:
+    if name.len > 0:
+      for i in ord(low(T))..ord(high(T)):
+        let e = T(i)
+        if not result and name == $e:
+          dst = e
+          result = true
 
-proc readJson*[T: enum](dst: var T; p: var JsonParser;
-                        unknownFields: UnknownFieldPolicy; fallback: T) {.untyped.} =
+proc readJson*[T: OrdinalEnum](dst: var T; p: var JsonParser;
+                               unknownFields: UnknownFieldPolicy) =
+  if not p.readEnum(dst) and not p.failed:
+    p.parseError("expected a known enum value")
+
+proc readJson*[T: HoleyEnum](dst: var T; p: var JsonParser;
+                             unknownFields: UnknownFieldPolicy) =
+  if not p.readEnum(dst) and not p.failed:
+    p.parseError("expected a known enum value")
+
+proc readJson*[T: OrdinalEnum](dst: var T; p: var JsonParser;
+                               unknownFields: UnknownFieldPolicy; fallback: T) =
   ## Reads an enum using its exact JSON spelling, or stores `fallback` when the
   ## input string is unknown.
   if not p.readEnum(dst) and not p.failed:
     dst = fallback
 
-proc readJson*[T](dst: var Option[T]; p: var JsonParser;
-                  unknownFields: UnknownFieldPolicy) {.untyped.} =
+proc readJson*[T: HoleyEnum](dst: var T; p: var JsonParser;
+                             unknownFields: UnknownFieldPolicy; fallback: T) =
+  if not p.readEnum(dst) and not p.failed:
+    dst = fallback
+
+proc readJson*[T: JsonReadable](dst: var Option[T]; p: var JsonParser;
+                  unknownFields: UnknownFieldPolicy) =
   if p.consumeNull():
     dst = none[T]()
   else:
@@ -602,8 +612,8 @@ proc readJson*[T](dst: var Option[T]; p: var JsonParser;
     readJson(value, p, unknownFields)
     dst = some(value)
 
-proc readJson*[T](dst: var seq[T]; p: var JsonParser;
-                  unknownFields: UnknownFieldPolicy) {.untyped.} =
+proc readJson*[T: JsonReadable](dst: var seq[T]; p: var JsonParser;
+                  unknownFields: UnknownFieldPolicy) =
   p.beginArray()
   var first = true
   while p.nextElement(first):
@@ -612,8 +622,8 @@ proc readJson*[T](dst: var seq[T]; p: var JsonParser;
     if last >= 0:
       readJson(dst[last], p, unknownFields)
 
-proc readJson*[T](dst: var set[T]; p: var JsonParser;
-                  unknownFields: UnknownFieldPolicy) {.untyped.} =
+proc readJson*[T: Ordinal and JsonReadable](dst: var set[T]; p: var JsonParser;
+                  unknownFields: UnknownFieldPolicy) =
   p.beginArray()
   var first = true
   while p.nextElement(first):
@@ -621,8 +631,8 @@ proc readJson*[T](dst: var set[T]; p: var JsonParser;
     readJson(item, p, unknownFields)
     dst.incl item
 
-proc readJson*[T: Keyable](dst: var HashSet[T]; p: var JsonParser;
-                  unknownFields: UnknownFieldPolicy) {.untyped.} =
+proc readJson*[T: Keyable and JsonReadable](dst: var HashSet[T]; p: var JsonParser;
+                  unknownFields: UnknownFieldPolicy) =
   p.beginArray()
   var first = true
   while p.nextElement(first):
@@ -630,8 +640,8 @@ proc readJson*[T: Keyable](dst: var HashSet[T]; p: var JsonParser;
     readJson(item, p, unknownFields)
     dst.incl item
 
-proc readJson*[T](dst: var Table[string, T]; p: var JsonParser;
-                  unknownFields: UnknownFieldPolicy) {.untyped.} =
+proc readJson*[T: JsonReadable](dst: var Table[string, T]; p: var JsonParser;
+                  unknownFields: UnknownFieldPolicy) =
   for name in p.jsonFields:
     let key = $name
     var value = default(T)
@@ -641,8 +651,8 @@ proc readJson*[T](dst: var Table[string, T]; p: var JsonParser;
 proc lengthError(p: var JsonParser; length: int) {.noinline.} =
   p.parseError("expected array with " & $length & " elements")
 
-proc readJson*[I, T](dst: var array[I, T]; p: var JsonParser;
-                     unknownFields: UnknownFieldPolicy) {.untyped.} =
+proc readJson*[I; T: JsonReadable](dst: var array[I, T]; p: var JsonParser;
+                     unknownFields: UnknownFieldPolicy) =
   p.beginArray()
   var first = true
   for item in mitems(dst):
@@ -653,8 +663,8 @@ proc readJson*[I, T](dst: var array[I, T]; p: var JsonParser;
   if p.nextElement(first):
     p.lengthError(dst.len)
 
-proc readObjectFields[T](dst: var T; p: var JsonParser;
-                         unknownFields: UnknownFieldPolicy) {.untyped, inline.} =
+proc readObjectFields[T: object|tuple](dst: var T; p: var JsonParser;
+                         unknownFields: UnknownFieldPolicy) {.inline.} =
   for name in p.jsonFields:
     var known = false
     for fieldName, field in fieldPairs(dst):
@@ -667,7 +677,7 @@ proc readObjectFields[T](dst: var T; p: var JsonParser;
       else:
         p.skipValue()
 
-proc isNamedTuple[T: tuple](value: T): bool {.untyped, inline.} =
+proc isNamedTuple[T: tuple](value: T): bool {.inline.} =
   # Nimony names the fields of an anonymous tuple `Field1`, `Field2`, ...
   result = true
   for fieldName, field in fieldPairs(value):
@@ -675,7 +685,7 @@ proc isNamedTuple[T: tuple](value: T): bool {.untyped, inline.} =
       result = false
 
 proc readJson*[T: tuple](dst: var T; p: var JsonParser;
-                         unknownFields: UnknownFieldPolicy) {.untyped.} =
+                         unknownFields: UnknownFieldPolicy) =
   ## A named tuple reads as an object, an anonymous one as an array.
   if isNamedTuple(dst):
     readObjectFields(dst, p, unknownFields)
@@ -691,17 +701,18 @@ proc readJson*[T: tuple](dst: var T; p: var JsonParser;
       p.parseError("expected tuple with the expected number of elements")
 
 proc readJson*[T: object](dst: var T; p: var JsonParser;
-                          unknownFields: UnknownFieldPolicy) {.untyped.} =
+                          unknownFields: UnknownFieldPolicy) =
   readObjectFields(dst, p, unknownFields)
 
-proc readJson*[T: nil (ref)](dst: var T; p: var JsonParser;
-                             unknownFields: UnknownFieldPolicy) {.untyped.} =
+proc readJson*[T: JsonReadable](dst: var (nil ref T); p: var JsonParser;
+                             unknownFields: UnknownFieldPolicy) =
   if p.consumeNull():
     dst = nil
   else:
     if dst == nil:
       new dst
-    readJson(dst[], p, unknownFields)
+    if dst != nil:
+      readJson(dst[], p, unknownFields)
 
 proc readJson*(dst: var RawJson; p: var JsonParser; unknownFields: UnknownFieldPolicy) =
   p.skip()
@@ -762,23 +773,29 @@ proc writeJson*[T: SomeInteger](w: var JsonWriter; value: T) =
   else:
     w.data.addInt(int64(value))
 
-proc writeJson*[T: SomeFloat](w: var JsonWriter; value: T) {.untyped.} =
-  ## NaN and infinity have no JSON spelling: they fail the writer.
+template writeFloat(w: var JsonWriter; value: untyped) =
+  # NaN and infinity have no JSON spelling: they fail the writer.
   if value != value or value - value != value - value:
     w.writeError()
   else:
     w.data.addFloat(value)
 
-proc writeJson*[T: enum](w: var JsonWriter; value: T) {.untyped.} =
+proc writeJson*(w: var JsonWriter; value: float64) {.inline.} =
+  w.writeFloat(value)
+
+proc writeJson*(w: var JsonWriter; value: float32) {.inline.} =
+  w.writeFloat(value)
+
+proc writeJson*[T: enum](w: var JsonWriter; value: T) =
   w.escapeJson($value)
 
-proc writeJson*[T](w: var JsonWriter; value: Option[T]) {.untyped.} =
+proc writeJson*[T: JsonWritable](w: var JsonWriter; value: Option[T]) =
   if value.isSome:
     writeJson(w, value.unsafeGet)
   else:
     w.write "null"
 
-proc writeArray[T](w: var JsonWriter; value: T) {.untyped, inline.} =
+template writeArray(w: var JsonWriter; value: untyped) =
   w.put '['
   var comma = false
   for item in value:
@@ -787,13 +804,13 @@ proc writeArray[T](w: var JsonWriter; value: T) {.untyped, inline.} =
     writeJson(w, item)
   w.put ']'
 
-proc writeJson*[T](w: var JsonWriter; value: seq[T]) {.untyped.} =
+proc writeJson*[T: JsonWritable](w: var JsonWriter; value: seq[T]) =
   writeArray(w, value)
 
-proc writeJson*[I, T](w: var JsonWriter; value: array[I, T]) {.untyped.} =
+proc writeJson*[I; T: JsonWritable](w: var JsonWriter; value: array[I, T]) =
   writeArray(w, value)
 
-proc writeJson*[T](w: var JsonWriter; value: set[T]) {.untyped.} =
+proc writeJson*[T: Ordinal and JsonWritable](w: var JsonWriter; value: set[T]) =
   w.put '['
   var comma = false
   for item in low(T)..high(T):
@@ -803,10 +820,10 @@ proc writeJson*[T](w: var JsonWriter; value: set[T]) {.untyped.} =
       writeJson(w, item)
   w.put ']'
 
-proc writeJson*[T: Keyable](w: var JsonWriter; value: HashSet[T]) {.untyped.} =
+proc writeJson*[T: Keyable and JsonWritable](w: var JsonWriter; value: HashSet[T]) =
   writeArray(w, value)
 
-proc writeJson*[T](w: var JsonWriter; value: Table[string, T]) {.untyped.} =
+proc writeJson*[T: JsonWritable](w: var JsonWriter; value: Table[string, T]) =
   w.put '{'
   var comma = false
   for key, item in pairs(value):
@@ -817,7 +834,7 @@ proc writeJson*[T](w: var JsonWriter; value: Table[string, T]) {.untyped.} =
     writeJson(w, item)
   w.put '}'
 
-proc writeObject[T](w: var JsonWriter; value: T) {.untyped, inline.} =
+proc writeObject[T: object|tuple](w: var JsonWriter; value: T) {.inline.} =
   w.put '{'
   var comma = false
   for name, field in fieldPairs(value):
@@ -829,7 +846,7 @@ proc writeObject[T](w: var JsonWriter; value: T) {.untyped, inline.} =
     writeJson(w, field)
   w.put '}'
 
-proc writeJson*[T: tuple](w: var JsonWriter; value: T) {.untyped.} =
+proc writeJson*[T: tuple](w: var JsonWriter; value: T) =
   if isNamedTuple(value):
     writeObject(w, value)
   else:
@@ -841,10 +858,10 @@ proc writeJson*[T: tuple](w: var JsonWriter; value: T) {.untyped.} =
       writeJson(w, field)
     w.put ']'
 
-proc writeJson*[T: object](w: var JsonWriter; value: T) {.untyped.} =
+proc writeJson*[T: object](w: var JsonWriter; value: T) =
   writeObject(w, value)
 
-proc writeJson*[T: nil (ref)](w: var JsonWriter; value: T) {.untyped.} =
+proc writeJson*[T: JsonWritable](w: var JsonWriter; value: (nil ref T)) =
   if value == nil:
     w.write "null"
   else:
@@ -902,8 +919,8 @@ proc writeJson*(w: var JsonWriter; value: CanonRawJson) =
 
 # ── entry points ──────────────────────────────────────────────────────────
 
-proc tryFromJson*[T](input: string; dst: var T; errorMsg: var string;
-                     unknownFields = ufSkip): bool {.untyped.} =
+proc tryFromJson*[T: JsonReadable](input: string; dst: var T; errorMsg: var string;
+                     unknownFields = ufSkip): bool =
   ## Decodes one complete JSON value into `dst`. On malformed input returns
   ## false and stores a message (`JSON at byte N: ...`) in `errorMsg`; `dst`
   ## may then be partially written.
@@ -914,32 +931,32 @@ proc tryFromJson*[T](input: string; dst: var T; errorMsg: var string;
   if not result:
     errorMsg = move reader.errorMsg
 
-proc fromJson*[T](input: string; dst: var T;
-                  unknownFields = ufSkip) {.untyped, raises.} =
+proc fromJson*[T: JsonReadable](input: string; dst: var T;
+                  unknownFields = ufSkip) {.raises.} =
   ## Decodes one complete JSON value into `dst`. Raises `ValueError` when the
   ## input is malformed or does not match `T`.
   var errorMsg = ""
   if not tryFromJson(input, dst, errorMsg, unknownFields):
     raise ValueError
 
-proc fromJson*[T](input: string; typ: typedesc[T];
-                  unknownFields = ufSkip): T {.untyped, raises.} =
+proc fromJson*[T: JsonReadable](input: string; typ: typedesc[T];
+                  unknownFields = ufSkip): T {.raises.} =
   ## Decodes one complete JSON value from `input`.
   result = default(T)
   fromJson(input, result, unknownFields)
 
-proc fromFile*[T](path: Path; dst: var T;
-                  unknownFields = ufSkip) {.untyped, raises.} =
+proc fromFile*[T: JsonReadable](path: Path; dst: var T;
+                  unknownFields = ufSkip) {.raises.} =
   ## Decodes one complete JSON file directly into `dst`.
   fromJson(readFile($path), dst, unknownFields)
 
-proc fromFile*[T](path: Path; typ: typedesc[T];
-                  unknownFields = ufSkip): T {.untyped, raises.} =
+proc fromFile*[T: JsonReadable](path: Path; typ: typedesc[T];
+                  unknownFields = ufSkip): T {.raises.} =
   ## Decodes one complete JSON file into `T`.
   result = default(T)
   fromFile(path, result, unknownFields)
 
-proc toJson*[T](value: T): string {.untyped, raises.} =
+proc toJson*[T: JsonWritable](value: T): string {.raises.} =
   ## Serializes `value` as JSON. Raises `ValueError` for values JSON cannot
   ## represent (NaN, infinity) or when a custom writer called `writeError`.
   var writer = JsonWriter(data: "", failed: false)
@@ -948,8 +965,8 @@ proc toJson*[T](value: T): string {.untyped, raises.} =
     raise ValueError
   result = move writer.data
 
-iterator jsonItems*[T](input: string;
-                       unknownFields = ufSkip): T {.untyped, raises, sideEffect.} =
+iterator jsonItems*[T: JsonReadable](input: string;
+                       unknownFields = ufSkip): T {.raises, sideEffect.} =
   ## Iterates the values in one top-level JSON array: `for x in jsonItems[T](s)`.
   ## Raises `ValueError` after the last good item when the input is malformed.
   var reader = JsonParser(data: input, pos: 0, depth: 0, failed: false, errorMsg: "")
