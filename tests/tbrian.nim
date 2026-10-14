@@ -26,7 +26,7 @@ proc encoded[T](value: T): string {.untyped, raises.} =
   if output.isErr: raiseAssert($output.error(JsonError()))
   result = output.unsafeGet
 
-proc writeError[T](value: T): string {.untyped.} =
+proc writeErrorOf[T](value: T): string {.untyped.} =
   let output = toJson(value)
   result = if output.isErr: $output.error(JsonError()) else: ""
 
@@ -82,7 +82,7 @@ proc readJson*(dst: var Page; p: var JsonParser;
     elif "status" == field:
       readJson(dst.status, p, unknownFields)
     elif unknownFields == ufReject:
-      p.parseError("expected known field, got \"" & $field & "\"")
+      p.parseError(jeUnknownField)
     else:
       p.skipJson()
 
@@ -107,7 +107,7 @@ proc readJson*(dst: var Content; p: var JsonParser;
     dst = Content(kind: parts, items: @[])
     readJson(dst.items, p, unknownFields)
   else:
-    p.parseError("expected string or array")
+    p.parseError()
 
 proc writeJson*(w: var JsonWriter; value: Content) =
   case value.kind
@@ -123,7 +123,7 @@ proc writeJson*(w: var JsonWriter; value: Page) =
 
 proc writeJson*(w: var JsonWriter; value: FailingWrite) =
   w.write "allocated writer storage"
-  w.writeError("cannot write a FailingWrite")
+  w.writeError()
 
 proc sameSample(a, b: Sample): bool =
   result = a.name == b.name and a.count == b.count and a.enabled == b.enabled and
@@ -206,7 +206,7 @@ proc rawValues() {.raises.} =
 proc fieldLifetimeAndUnknownPolicy() {.raises.} =
   check rejects("{\"name\":\"x\",\"extra\":1}", Sample, ufReject)
   let msg = errorOf("{\"number\":4,\"ex\\u0074ra\":1}", Page, ufReject)
-  check msg.endsWith("expected known field, got \"extra\""), msg
+  check msg.endsWith("unknown field"), msg
 
 proc malformedInput() {.raises.} =
   for input in ["+1", "[1,]", "{\"x\":1,}", "true false", "\"\\u12xz\""]:
@@ -356,18 +356,18 @@ proc errorMessages() {.raises.} =
   of Err(e): check e.kind == jeDigitExpected and e.pos == 5
   msg = errorOf("[1,2", seq[int])
   check msg.endsWith("unterminated array"), msg
-  # A custom reader's message keeps the byte where it was recorded.
+  # A custom reader's error keeps the byte where it was recorded.
   msg = errorOf(" 1", Content)
-  check msg == "JSON at byte 1: expected string or array", msg
+  check msg == "JSON at byte 1: invalid value", msg
   msg = errorOf("[1,\"x\"]", Triple)
-  check msg.endsWith("expected array with 3 elements"), msg
+  check msg.endsWith("wrong number of elements"), msg
   msg = errorOf("{\"number\":1,}", Page)
   check msg.endsWith("trailing comma in object"), msg
   # Write errors report the output byte where they happened.
-  msg = writeError(@[1.0, NaN])
+  msg = writeErrorOf(@[1.0, NaN])
   check msg == "JSON at byte 5: NaN or infinity has no JSON form", msg
-  msg = writeError(FailingWrite())
-  check msg == "JSON at byte 24: cannot write a FailingWrite", msg
+  msg = writeErrorOf(FailingWrite())
+  check msg == "JSON at byte 24: invalid value", msg
 
 proc holeyEnums() {.raises.} =
   # Holes between members spell as "" and must never match.

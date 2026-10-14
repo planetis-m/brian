@@ -20,7 +20,7 @@ proc readJson*(dst: var Response; p: var JsonParser;
     elif field == "retry":
       readJson(dst.retry, p, unknownFields)
     elif unknownFields == ufReject:
-      p.parseError("expected known field, got \"" & $field & "\"")
+      p.parseError(jeUnknownField)
     else:
       p.skipJson()
 

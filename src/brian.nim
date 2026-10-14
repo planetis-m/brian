@@ -91,8 +91,8 @@ type
   JsonWritable = concept
     proc writeJson(w: var JsonWriter; value: Self)
 
-func `$`*(value: RawJson): string {.inline.} = string(value)
-func `$`*(value: CanonRawJson): string {.inline.} = string(value)
+func `$`*(value: RawJson): string {.borrow.}
+func `$`*(value: CanonRawJson): string {.borrow.}
 
 const
   DepthLimit = 1_000
@@ -153,16 +153,15 @@ proc writeError*(w: var JsonWriter; kind = jeInvalid) {.noinline.} =
 
 proc `$`*(e: JsonError): string =
   ## `JSON at byte N: message`. Text is only ever built here.
-  result = "JSON at byte " & $e.pos & ": "
-  if ord(e.kind) >= 0 and ord(e.kind) <= ord(high(JsonErrorKind)):
-    # An enum conversion is not range checked; this lets the index be proven.
-    result.add ErrorMessages[e.kind]
+  {.assume: e.kind >= low(JsonErrorKind) and e.kind <= high(JsonErrorKind).}
+  result = "JSON at byte " & $e.pos & ": " & ErrorMessages[e.kind]
 
 # ── spans ─────────────────────────────────────────────────────────────────
 
 proc addSpan(dst: var string; src: openArray[char]; start, stop: int) {.inline.} =
-  ## Appends src[start ..< stop].
-  if start >= 0 and start < stop and stop <= src.len:
+  ## Appends src[start ..< stop]; callers pass a span inside `src`.
+  if start < stop:
+    {.assume: start >= 0 and stop <= src.len.}
     let length = stop - start
     let oldLength = dst.len
     copyMem(beginStore(dst, oldLength + length, oldLength), addr src[start], length)
@@ -670,9 +669,8 @@ proc readJson*[T: JsonReadable](dst: var seq[T]; p: var JsonParser;
   var first = true
   while p.nextItem(first, ']'):
     dst.add default(T)
-    let last = dst.len - 1
-    if last >= 0:
-      readJson(dst[last], p, unknownFields)
+    {.assume: dst.len > 0.}
+    readJson(dst[dst.len - 1], p, unknownFields)
 
 proc readJson*[T: Ordinal and JsonReadable](dst: var set[T]; p: var JsonParser;
                   unknownFields: UnknownFieldPolicy) =
@@ -961,7 +959,7 @@ proc readJson*(dst: var CanonRawJson; p: var JsonParser;
   var writer = JsonWriter(data: "")
   p.canonicalizeValue(writer)
   if not p.hasError:
-    dst = CanonRawJson(move writer.data)
+    dst = CanonRawJson(writer.data)
 
 proc writeJson*(w: var JsonWriter; value: CanonRawJson) =
   w.write string(value)
@@ -977,9 +975,9 @@ proc decode[T: JsonReadable](data: openArray[char]; offset: int;
   p.finish()
   if p.hasError:
     p.error.pos += offset
-    result = err[T, JsonError](move p.error)
+    result = err[T, JsonError](p.error)
   else:
-    result = ok[T, JsonError](move value)
+    result = ok[T, JsonError](value)
 
 proc fromJson*[T: JsonReadable](input: string; typ: typedesc[T];
                                 unknownFields = ufSkip): Result[T, JsonError] =
@@ -1008,4 +1006,4 @@ proc toJson*[T: JsonWritable](value: T): Result[string, JsonError] =
   if writer.error.kind != jeNone:
     result = err[string, JsonError](writer.error)
   else:
-    result = ok[string, JsonError](move writer.data)
+    result = ok[string, JsonError](writer.data)

@@ -153,7 +153,7 @@ proc readJson(dst: var Content; p: var JsonParser; unknownFields: UnknownFieldPo
     dst = Content(kind: parts)
     readJson(dst.items, p, unknownFields)
   else:
-    p.parseError("expected string or array")
+    p.parseError()
 
 proc writeJson(w: var JsonWriter; value: Content) =
   case value.kind
@@ -168,9 +168,9 @@ echo toJson(content).get("") # ["first","second"]
 
 Custom object readers use one iterator over borrowed `openArray[char]` keys.
 Compare keys directly without allocating, and handle unknown values according
-to the supplied policy. `parseError` records a failure; the parser keeps the
-first one and turns every later read into a no-op, so readers need no early
-returns:
+to the supplied policy. `parseError` records a failure, by default
+`jeInvalid`; the parser keeps the first one and turns every later read into a
+no-op, so readers need no early returns:
 
 ```nim
 type
@@ -185,7 +185,7 @@ proc readJson(dst: var Page; p: var JsonParser; unknownFields: UnknownFieldPolic
     elif field == "status":
       readJson(dst.status, p, unknownFields)
     elif unknownFields == ufReject:
-      p.parseError("expected known field, got \"" & $field & "\"")
+      p.parseError(jeUnknownField)
     else:
       p.skipJson()
 ```
@@ -209,7 +209,7 @@ proc readJson(dst: var ResponseStatus; p: var JsonParser;
 
 Custom writers can append JSON syntax with `w.write`, escape keys or strings
 with `w.escapeJson`, delegate values back to `writeJson`, and reject a value
-with `w.writeError(msg)`.
+with `w.writeError()`.
 
 ## Supported mappings
 
@@ -238,8 +238,8 @@ be measured one dimension at a time with Cachegrind instruction counts.
 - `readJson(dst, parser, policy)` customizes decoding.
 - `readJson(dst, parser, policy, fallback)` reads an enum with an unknown-value fallback.
 - `parser.jsonFields` iterates borrowed `openArray[char]` object keys.
-- `parser.parseError(msg)` records a custom decoding failure.
-- `writer.writeError(msg)` records a custom encoding failure.
+- `parser.parseError(kind)` records a decoding failure (default `jeInvalid`).
+- `writer.writeError(kind)` records an encoding failure (default `jeInvalid`).
 - `writeJson(writer, value)` customizes encoding.
 - `RawJson` preserves a captured JSON representation.
 - `CanonRawJson` produces a compact normalized representation.
