@@ -1,4 +1,8 @@
 import brian
+import std/[assertions, syncio]
+
+template check(cond: bool) =
+  if not cond: raiseAssert("bench check failed")
 
 type Response = object
   id: int
@@ -15,7 +19,7 @@ proc readJson*(dst: var Response; p: var JsonParser;
     elif field == "retry":
       readJson(dst.retry, p, unknownFields)
     elif unknownFields == ufReject:
-      p.raiseParseError("expected known field, got \"" & $field & "\"")
+      p.parseError("expected known field, got \"" & $field & "\"")
     else:
       p.skipJson()
 
@@ -26,14 +30,16 @@ proc makePayload(): string =
     result.add "{\"id\":" & $index & ",\"active\":true,\"retry\":3}"
   result.add ']'
 
-proc main() =
+proc main() {.raises.} =
   let payload = makePayload()
   var checksum = 0
   for iteration in 0..<20:
     let values = fromJson(payload, seq[Response])
-    doAssert values.len == 2_000
+    check values.len == 2_000
     checksum += values[iteration].retry
   echo checksum
 
-when isMainModule:
+try:
   main()
+except:
+  quit "bench failed"

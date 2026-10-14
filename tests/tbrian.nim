@@ -1,5 +1,22 @@
-import std/[assertions, math, options, parseutils, sets, strutils, tables]
+import std/[assertions, math, options, parseutils, sets, strutils, syncio, tables]
 import brian
+
+template check(cond: bool; msg = "") =
+  # Unlike `assert`, never compiled out.
+  if not cond: raiseAssert(msg)
+
+proc rejects[T](input: string; typ: typedesc[T];
+                unknownFields = ufSkip): bool {.untyped.} =
+  var dst = default(T)
+  var msg = ""
+  result = not tryFromJson(input, dst, msg, unknownFields)
+
+proc writeFails[T](value: T): bool {.untyped.} =
+  result = false
+  try:
+    discard toJson(value)
+  except:
+    result = true
 
 type
   Colour = enum
@@ -29,6 +46,10 @@ type
   WireStatus = enum
     ready = "wire_ready", stopped
   FailingWrite = object
+  NamedTuple = tuple[name: string, count: int]
+  Triple = (int, string, bool)
+  Three = array[3, int]
+  Empty = array[0, int]
 
 proc readJson*(dst: var Page; p: var JsonParser;
                unknownFields: UnknownFieldPolicy) =
@@ -38,14 +59,14 @@ proc readJson*(dst: var Page; p: var JsonParser;
     elif "status" == field:
       readJson(dst.status, p, unknownFields)
     elif unknownFields == ufReject:
-      p.raiseParseError("expected known field, got \"" & $field & "\"")
+      p.parseError("expected known field, got \"" & $field & "\"")
     else:
       p.skipJson()
 
 proc readJson*(dst: var OpenObject; p: var JsonParser;
                unknownFields: UnknownFieldPolicy) =
   for field in p.jsonFields:
-    var value: int
+    var value = 0
     readJson(value, p, unknownFields)
     dst.fields.add ($field, value)
 
@@ -57,13 +78,13 @@ proc readJson*(dst: var Content; p: var JsonParser;
                unknownFields: UnknownFieldPolicy) =
   case p.kind
   of jkString:
-    dst = Content(kind: text)
+    dst = Content(kind: text, body: "")
     readJson(dst.body, p, unknownFields)
   of jkArray:
-    dst = Content(kind: parts)
+    dst = Content(kind: parts, items: @[])
     readJson(dst.items, p, unknownFields)
   else:
-    p.raiseParseError("expected string or array")
+    p.parseError("expected string or array")
 
 proc writeJson*(w: var JsonWriter; value: Content) =
   case value.kind
@@ -79,9 +100,18 @@ proc writeJson*(w: var JsonWriter; value: Page) =
 
 proc writeJson*(w: var JsonWriter; value: FailingWrite) =
   w.write "allocated writer storage"
-  raise newException(ValueError, "intentional writer failure")
+  w.writeError()
 
-block object_round_trip:
+proc sameSample(a, b: Sample): bool =
+  result = a.name == b.name and a.count == b.count and a.enabled == b.enabled and
+    a.colour == b.colour and a.child.isSome == b.child.isSome and a.values == b.values
+  if result and a.child.isSome:
+    result = a.child.unsafeGet.value == b.child.unsafeGet.value
+
+proc samePage(a: Page; number: int; status: string): bool =
+  a.number == number and a.status == status
+
+proc objectRoundTrip() {.raises.} =
   let source = """{
     "name":"\u0391\u03b8\u03ae\u03bd\u03b1",
     "count":-42,
@@ -92,218 +122,196 @@ block object_round_trip:
     "unknown":{"deep":[false,null,"ignored"]}
   }"""
   let value = fromJson(source, Sample)
-  doAssert value.name == "Αθήνα"
-  doAssert value.count == -42
-  doAssert value.colour == blue
-  doAssert value.child.get.value == 7
-  doAssert value.values == @[1, 2, 3]
-  doAssert fromJson(toJson(value), Sample) == value
+  check value.name == "Αθήνα"
+  check value.count == -42
+  check value.colour == blue
+  check value.child.unsafeGet.value == 7
+  check value.values == @[1, 2, 3]
+  check sameSample(fromJson(toJson(value), Sample), value)
 
-block custom_union:
+proc customUnion() {.raises.} =
   let textContent = fromJson("\"hello\"", Content)
-  doAssert textContent.kind == text
-  doAssert textContent.body == "hello"
+  check textContent.kind == text
+  check textContent.body == "hello"
   let partContent = fromJson("[\"a\",\"b\"]", Content)
-  doAssert partContent.kind == parts
-  doAssert partContent.items == @["a", "b"]
-  doAssert toJson(Content(kind: parts, items: @["a", "b"])) == "[\"a\",\"b\"]"
+  check partContent.kind == parts
+  check partContent.items == @["a", "b"]
+  check toJson(Content(kind: parts, items: @["a", "b"])) == "[\"a\",\"b\"]"
 
-block custom_object_and_writer:
+proc customObjectAndWriter() {.raises.} =
   let page = fromJson("{\"number\":4,\"status\":\"ok\"}", Page)
-  doAssert page == Page(number: 4, status: "ok")
-  doAssert fromJson("{\"number\":4,\"extra\":[1],\"status\":\"ok\"}", Page) == page
-  doAssert toJson(page) == "{\"number\":4,\"status\":\"ok\"}"
-  doAssertRaises ValueError:
-    discard toJson(FailingWrite())
+  check samePage(page, 4, "ok")
+  check samePage(fromJson("{\"number\":4,\"extra\":[1],\"status\":\"ok\"}", Page), 4, "ok")
+  check toJson(page) == "{\"number\":4,\"status\":\"ok\"}"
+  check writeFails(FailingWrite())
 
-block custom_open_object:
+proc customOpenObject() {.raises.} =
   var value = OpenObject(fields: @[("default", 0)])
   fromJson("{\"one\":1,\"t\\u0077o\":2,\"\":3}", value)
-  doAssert value.fields == @[
-    ("default", 0), ("one", 1), ("two", 2), ("", 3)
-  ]
+  check value.fields == @[("default", 0), ("one", 1), ("two", 2), ("", 3)]
 
-block custom_enum_fallback:
-  doAssert fromJson("\"in_progress\"", ResponseStatus) == inProgress
-  doAssert fromJson("\"incompl\\u0065te\"", ResponseStatus) == incomplete
-  doAssert fromJson("\"delayed\"", ResponseStatus) == unknown
-  doAssert toJson(inProgress) == "\"in_progress\""
+proc customEnumFallback() {.raises.} =
+  check fromJson("\"in_progress\"", ResponseStatus) == inProgress
+  check fromJson("\"incompl\\u0065te\"", ResponseStatus) == incomplete
+  check fromJson("\"delayed\"", ResponseStatus) == unknown
+  check toJson(inProgress) == "\"in_progress\""
 
-block strict_enum:
-  doAssert fromJson("\"wire_ready\"", WireStatus) == ready
-  doAssert fromJson("\"wire\\u005fready\"", WireStatus) == ready
-  doAssertRaises JsonParsingError:
-    discard fromJson("\"Wire_Ready\"", WireStatus)
+proc strictEnum() {.raises.} =
+  check fromJson("\"wire_ready\"", WireStatus) == ready
+  check fromJson("\"wire\\u005fready\"", WireStatus) == ready
+  check rejects("\"Wire_Ready\"", WireStatus)
 
-block escaped_field_names:
-  doAssert fromJson("{\"na\\u006de\":\"x\"}", Sample).name == "x"
+proc escapedFieldNames() {.raises.} =
+  check fromJson("{\"na\\u006de\":\"x\"}", Sample).name == "x"
   let page = fromJson("{\"num\\u0062er\":4,\"sta\\u0074us\":\"ok\"}", Page)
-  doAssert page == Page(number: 4, status: "ok")
+  check samePage(page, 4, "ok")
 
-block raw_values:
+proc rawValues() {.raises.} =
   let raw = fromJson(" { \"x\" : [ 1, \"\\u03b1\" ] } ", RawJson)
-  doAssert $raw == "{ \"x\" : [ 1, \"\\u03b1\" ] }"
-  doAssert string(raw) == "{ \"x\" : [ 1, \"\\u03b1\" ] }"
-  doAssert toJson(raw) == string(raw)
-  doAssert toJson(RawJson("not validated here")) == "not validated here"
+  check $raw == "{ \"x\" : [ 1, \"\\u03b1\" ] }"
+  check string(raw) == "{ \"x\" : [ 1, \"\\u03b1\" ] }"
+  check toJson(raw) == string(raw)
+  check toJson(RawJson("not validated here")) == "not validated here"
   let canonical = fromJson(" { \"x\" : [ 1, \"\\u03b1\" ] } ", CanonRawJson)
-  doAssert $canonical == "{\"x\":[1,\"α\"]}"
-  doAssert string(fromJson("{\"\":1}", CanonRawJson)) == "{\"\":1}"
+  check $canonical == "{\"x\":[1,\"α\"]}"
+  check string(fromJson("{\"\":1}", CanonRawJson)) == "{\"\":1}"
   let escapedKeys = fromJson(
     """{"a\u0022b":1,"c\\d":2,"\u0001":3}""", CanonRawJson)
-  doAssert string(escapedKeys) ==
-    """{"a\"b":1,"c\\d":2,"\u0001":3}"""
-  doAssert string(fromJson("1e", RawJson)) == "1e"
-  doAssert string(fromJson("-", RawJson)) == "-"
+  check string(escapedKeys) == """{"a\"b":1,"c\\d":2,"\u0001":3}"""
+  check string(fromJson("1e", RawJson)) == "1e"
+  check string(fromJson("-", RawJson)) == "-"
 
-block field_lifetime_and_unknown_policy:
+proc fieldLifetimeAndUnknownPolicy() {.raises.} =
   var destination = Sample()
-  doAssertRaises JsonParsingError:
-    fromJson("{\"name\":\"x\",\"extra\":1}", destination, ufReject)
-  try:
-    discard fromJson("{\"number\":4,\"ex\\u0074ra\":1}", Page, ufReject)
-    doAssert false, "unknown custom fields should be rejected"
-  except JsonParsingError as error:
-    doAssert error.msg.endsWith("expected known field, got \"extra\"")
+  var msg = ""
+  check not tryFromJson("{\"name\":\"x\",\"extra\":1}", destination, msg, ufReject)
+  var page = Page()
+  check not tryFromJson("{\"number\":4,\"ex\\u0074ra\":1}", page, msg, ufReject)
+  check msg.endsWith("expected known field, got \"extra\""), msg
 
-block malformed_input:
-  for input in ["+1", "[1,]", "{\"x\":1,}",
-                "true false", "\"\\u12xz\""]:
-    doAssertRaises JsonParsingError:
-      discard fromJson(input, RawJson)
+proc malformedInput() {.raises.} =
+  for input in ["+1", "[1,]", "{\"x\":1,}", "true false", "\"\\u12xz\""]:
+    check rejects(input, RawJson), input
 
-block parsejson_compatible_depth:
+proc parsejsonCompatibleDepth() {.raises.} =
   let accepted = repeat('[', 1_001) & repeat(']', 1_001)
   discard fromJson(accepted, RawJson)
   let rejected = repeat('[', 1_002) & repeat(']', 1_002)
-  doAssertRaises JsonParsingError:
-    discard fromJson(rejected, RawJson)
+  check rejects(rejected, RawJson)
 
-block integer_limits:
-  doAssert fromJson("-128", int8) == -128'i8
-  doAssert fromJson("255", uint8) == 255'u8
-  doAssert fromJson("-32768", int16) == low(int16)
-  doAssert fromJson("32767", int16) == high(int16)
-  doAssert fromJson("65535", uint16) == high(uint16)
-  doAssert fromJson("-2147483648", int32) == low(int32)
-  doAssert fromJson("2147483647", int32) == high(int32)
-  doAssert fromJson("4294967295", uint32) == high(uint32)
-  doAssert fromJson("-9223372036854775808", int64) == low(int64)
-  doAssert fromJson("9223372036854775807", int64) == high(int64)
-  doAssert fromJson("18446744073709551615", uint64) == high(uint64)
+proc integerLimits() {.raises.} =
+  check fromJson("-128", int8) == -128'i8
+  check fromJson("255", uint8) == 255'u8
+  check fromJson("-32768", int16) == low(int16)
+  check fromJson("32767", int16) == high(int16)
+  check fromJson("65535", uint16) == high(uint16)
+  check fromJson("-2147483648", int32) == low(int32)
+  check fromJson("2147483647", int32) == high(int32)
+  check fromJson("4294967295", uint32) == high(uint32)
+  check fromJson("-9223372036854775808", int64) == low(int64)
+  check fromJson("9223372036854775807", int64) == high(int64)
+  check fromJson("18446744073709551615", uint64) == high(uint64)
   for input in ["128", "-129"]:
-    doAssertRaises JsonParsingError:
-      discard fromJson(input, int8)
-  doAssertRaises JsonParsingError:
-    discard fromJson("32768", int16)
-  doAssertRaises JsonParsingError:
-    discard fromJson("-32769", int16)
-  doAssertRaises JsonParsingError:
-    discard fromJson("65536", uint16)
-  doAssertRaises JsonParsingError:
-    discard fromJson("2147483648", int32)
-  doAssertRaises JsonParsingError:
-    discard fromJson("-2147483649", int32)
-  doAssertRaises JsonParsingError:
-    discard fromJson("4294967296", uint32)
-  doAssertRaises JsonParsingError:
-    discard fromJson("9223372036854775808", int64)
-  doAssertRaises JsonParsingError:
-    discard fromJson("-9223372036854775809", int64)
-  doAssertRaises JsonParsingError:
-    discard fromJson("18446744073709551616", uint64)
-  doAssertRaises JsonParsingError:
-    discard fromJson("-1", uint8)
-  doAssert fromJson("-0", uint8) == 0'u8
+    check rejects(input, int8), input
+  check rejects("32768", int16)
+  check rejects("-32769", int16)
+  check rejects("65536", uint16)
+  check rejects("2147483648", int32)
+  check rejects("-2147483649", int32)
+  check rejects("4294967296", uint32)
+  check rejects("9223372036854775808", int64)
+  check rejects("-9223372036854775809", int64)
+  check rejects("18446744073709551616", uint64)
+  check rejects("-1", uint8)
+  check fromJson("-0", uint8) == 0'u8
 
-block integer_serialization_boundaries:
+proc integerSerializationBoundaries() {.raises.} =
   for value in [0'i64, 9, 10, 99, 100, 101, 9_999, 10_000, -1, -99, -100]:
-    doAssert fromJson(toJson(value), int64) == value
-  doAssert fromJson(toJson(low(int64)), int64) == low(int64)
-  doAssert fromJson(toJson(high(int64)), int64) == high(int64)
-  doAssert fromJson(toJson(high(uint64)), uint64) == high(uint64)
+    check fromJson(toJson(value), int64) == value
+  check fromJson(toJson(low(int64)), int64) == low(int64)
+  check fromJson(toJson(high(int64)), int64) == high(int64)
+  check fromJson(toJson(high(uint64)), uint64) == high(uint64)
 
-block floats:
-  doAssert fromJson("-12.5e-1", float64) == -1.25
-  doAssert fromJson("1.25", float32) == 1.25'f32
-  doAssert fromJson(".1", float64) == 0.1
-  doAssert fromJson("01", float64) == 1.0
-  doAssert fromJson("1.", float64) == 1.0
-  doAssert fromJson(".", float64) == 0.0
-  doAssert fromJson("-.", float64) == -0.0
+proc floats() {.raises.} =
+  check fromJson("-12.5e-1", float64) == -1.25
+  check fromJson("1.25", float32) == 1.25'f32
+  check fromJson(".1", float64) == 0.1
+  check fromJson("01", float64) == 1.0
+  check fromJson("1.", float64) == 1.0
+  check rejects(".", float64)
+  check rejects("-.", float64)
   for input in ["0.1", "2.2250738585072012e-308", "1.0000000000000001",
                 "4.9406564584124654e-324", "1.7976931348623157e308"]:
     var expected = 0.0
-    doAssert parseutils.parseFloat(input, expected) == input.len
-    doAssert cast[uint64](fromJson(input, float64)) == cast[uint64](expected)
-  doAssert classify(fromJson("1e400", float64)) == fcInf
+    check parseFloat(input, expected) == input.len
+    check cast[uint64](fromJson(input, float64)) == cast[uint64](expected), input
+  check classify(fromJson("1e400", float64)) == fcInf
   for input in ["1e", "1e+", "-"]:
-    doAssertRaises JsonParsingError:
-      discard fromJson(input, float64)
+    check rejects(input, float64), input
   for value in [0.0, -0.0, 0.1, -12.5, 1.2345678901234567, 1.0e100, 1.0e-100]:
-    doAssert cast[uint64](fromJson(toJson(value), float64)) == cast[uint64](value)
+    check cast[uint64](fromJson(toJson(value), float64)) == cast[uint64](value)
   for value in [NaN, Inf, -Inf]:
-    doAssertRaises ValueError:
-      discard toJson(value)
+    check writeFails(value)
 
-block tuples_arrays_and_items:
-  doAssert fromJson("[1,\"x\",true]", (int, string, bool)) == (1, "x", true)
-  type NamedTuple = tuple[name: string, count: int]
+proc tuplesArraysAndItems() {.raises.} =
+  let anonymous = fromJson("[1,\"x\",true]", Triple)
+  check anonymous[0] == 1 and anonymous[1] == "x" and anonymous[2]
   let named = fromJson("{\"name\":\"x\",\"count\":2}", NamedTuple)
-  doAssert named == (name: "x", count: 2)
-  doAssert toJson(named) == "{\"name\":\"x\",\"count\":2}"
+  check named.name == "x" and named.count == 2
+  check toJson(named) == "{\"name\":\"x\",\"count\":2}"
+  check toJson((1, "x")) == "[1,\"x\"]"
   let withUnknown = "{\"name\":\"x\",\"extra\":true,\"count\":2}"
-  doAssert fromJson(withUnknown, NamedTuple) == named
-  var rejected = default(NamedTuple)
-  doAssertRaises JsonParsingError:
-    fromJson(withUnknown, rejected, ufReject)
-  doAssert fromJson("[1,2,3]", array[3, int]) == [1, 2, 3]
-  doAssert fromJson("[]", array[0, int]) == default(array[0, int])
+  let tolerant = fromJson(withUnknown, NamedTuple)
+  check tolerant.name == "x" and tolerant.count == 2
+  check rejects(withUnknown, NamedTuple, ufReject)
+  check fromJson("[1,2,3]", Three) == [1, 2, 3]
+  discard fromJson("[]", Empty)
   for input in ["[1,2]", "[1,2,3,4]"]:
-    doAssertRaises JsonParsingError:
-      discard fromJson(input, array[3, int])
+    check rejects(input, Three), input
   var collected: seq[int] = @[]
-  for value in jsonItems("[1,2,3]", int): collected.add value
-  doAssert collected == @[1, 2, 3]
+  for value in jsonItems[int]("[1,2,3]"): collected.add value
+  check collected == @[1, 2, 3]
 
-block sets_and_tables:
+proc setsAndTables() {.raises.} =
   var colours = {red}
   fromJson("[\"blue\"]", colours)
-  doAssert colours == {red, blue}
-  doAssert toJson({red, blue}) == "[\"red\",\"blue\"]"
+  check colours == {red, blue}
+  check toJson({red, blue}) == "[\"red\",\"blue\"]"
 
   let hashed = fromJson("[1,2,2]", HashSet[int])
-  doAssert hashed == [1, 2].toHashSet()
-  doAssert fromJson(toJson(hashed), HashSet[int]) == hashed
+  check hashed.len == 2 and 1 in hashed and 2 in hashed
+  let again = fromJson(toJson(hashed), HashSet[int])
+  check again.len == 2 and 1 in again and 2 in again
 
-  let ordered = ["first", "second"].toOrderedSet()
-  doAssert toJson(ordered) == "[\"first\",\"second\"]"
-  doAssert fromJson(toJson(ordered), OrderedSet[string]) == ordered
-
-  var numbers = {"stale": 9}.toTable()
+  var numbers = initTable[string, int]()
+  numbers["stale"] = 9
   fromJson("{\"one\":1,\"t\\u0077o\":2}", numbers)
-  doAssert numbers == {"stale": 9, "one": 1, "two": 2}.toTable()
+  check numbers.len == 3
+  check numbers.getOrDefault("stale") == 9 and numbers.getOrDefault("one") == 1 and
+    numbers.getOrDefault("two") == 2
 
-  let orderedTable = [("one", 1), ("two", 2)].toOrderedTable()
-  doAssert toJson(orderedTable) == "{\"one\":1,\"two\":2}"
-  doAssert fromJson(toJson(orderedTable), OrderedTable[string, int]) == orderedTable
+  var ordered = initTable[string, int]()
+  ordered["one"] = 1
+  ordered["two"] = 2
+  check toJson(ordered) == "{\"one\":1,\"two\":2}"
+  let reread = fromJson(toJson(ordered), Table[string, int])
+  check toJson(reread) == "{\"one\":1,\"two\":2}"
 
-  let duplicate = fromJson("{\"item\":{\"value\":1},\"item\":{}}",
-                           Table[string, Child])
-  doAssert duplicate["item"] == Child()
+  let duplicate = fromJson("{\"item\":{\"value\":1},\"item\":{}}", Table[string, Child])
+  check duplicate.len == 1 and duplicate.getOrDefault("item").value == 0
 
-block raw_string_compatibility:
-  doAssert fromJson("\"\\x\"", string) == "\\x"
-  doAssert fromJson("\"\\v\"", string) == "\v"
-  doAssert fromJson("\"\\udc00\"", string) == "\xED\xB0\x80"
-  doAssert string(fromJson("\"\\udc00\"", RawJson)) == "\"\\udc00\""
+proc rawStringCompatibility() {.raises.} =
+  check fromJson("\"\\x\"", string) == "\\x"
+  check fromJson("\"\\v\"", string) == "\v"
+  check fromJson("\"\\udc00\"", string) == "\xED\xB0\x80"
+  check string(fromJson("\"\\udc00\"", RawJson)) == "\"\\udc00\""
 
-block string_serialization:
-  doAssert toJson("line\nbreak") == "\"line\\nbreak\""
-  doAssert toJson("\xff") == "\"\xff\""
-  doAssert toJson("\v\x0e\x1f") == "\"\\u000b\\u000E\\u001F\""
+proc stringSerialization() {.raises.} =
+  check toJson("line\nbreak") == "\"line\\nbreak\""
+  check toJson("\xff") == "\"\xff\""
+  check toJson("\v\x0e\x1f") == "\"\\u000b\\u000E\\u001F\""
 
-block surrogate_compatibility:
+proc surrogateCompatibility() {.raises.} =
   for (input, expected) in [
     ("\"\\ud83d\"", "\xED\xA0\xBD"),
     ("\"\\udc3e\"", "\xED\xB0\xBE"),
@@ -313,10 +321,44 @@ block surrogate_compatibility:
     ("\"\\ud83dtext\"", "\xED\xA0\xBDtext"),
     ("\"\\ud83d\\ud83d\\udc3e\"", "\xED\xA0\xBD🐾")
   ]:
-    doAssert fromJson(input, string) == expected
-    doAssert string(fromJson(input, RawJson)) == input
+    check fromJson(input, string) == expected, input
+    check string(fromJson(input, RawJson)) == input, input
   for input in ["\"\\u12xz\"", "\"\\ud83d\\u12xz\"", "\"\\ud83d\\u12\""]:
-    doAssertRaises JsonParsingError:
-      discard fromJson(input, string)
-    doAssertRaises JsonParsingError:
-      discard fromJson(input, RawJson)
+    check rejects(input, string), input
+    check rejects(input, RawJson), input
+
+proc errorMessages() {.raises.} =
+  # The first error wins and names the byte where it was found.
+  var value: seq[int] = @[]
+  var msg = ""
+  check not tryFromJson("[1,2,x,y]", value, msg)
+  check msg == "JSON at byte 5: expected digit", msg
+  check not tryFromJson("[1,2", value, msg)
+  check msg.endsWith("unterminated array"), msg
+
+proc main() {.raises.} =
+  objectRoundTrip()
+  customUnion()
+  customObjectAndWriter()
+  customOpenObject()
+  customEnumFallback()
+  strictEnum()
+  escapedFieldNames()
+  rawValues()
+  fieldLifetimeAndUnknownPolicy()
+  malformedInput()
+  parsejsonCompatibleDepth()
+  integerLimits()
+  integerSerializationBoundaries()
+  floats()
+  tuplesArraysAndItems()
+  setsAndTables()
+  rawStringCompatibility()
+  stringSerialization()
+  surrogateCompatibility()
+  errorMessages()
+
+try:
+  main()
+except:
+  raiseAssert("unexpected ValueError")

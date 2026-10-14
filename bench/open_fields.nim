@@ -1,4 +1,8 @@
 import brian
+import std/[assertions, syncio]
+
+template check(cond: bool) =
+  if not cond: raiseAssert("bench check failed")
 
 type
   Entry = object
@@ -10,7 +14,7 @@ type
 proc readJson(dst: var OpenFields; p: var JsonParser;
               unknownFields: UnknownFieldPolicy) =
   for field in p.jsonFields:
-    var value: int
+    var value = 0
     readJson(value, p, unknownFields)
     dst.entries.add Entry(field: $field, value: value)
 
@@ -24,14 +28,16 @@ proc makePayload(): string =
     result.add "\"field_" & $index & "\":" & $index
   result.add '}'
 
-proc main() =
+proc main() {.raises.} =
   let payload = makePayload()
   var checksum = 0
   for iteration in 0..<20:
     let fields = fromJson(payload, OpenFields)
-    doAssert fields.entries.len == Count
+    check fields.entries.len == Count
     checksum += fields.entries[iteration].value
   echo checksum
 
-when isMainModule:
+try:
   main()
+except:
+  quit "bench failed"
