@@ -343,6 +343,10 @@ proc errorMessages() {.raises.} =
   check msg == "JSON at byte 5: expected digit", msg
   check not tryFromJson("[1,2", value, msg)
   check msg.endsWith("unterminated array"), msg
+  # A custom reader's message keeps the byte where it was recorded.
+  var content = Content(kind: text, body: "")
+  check not tryFromJson(" 1", content, msg)
+  check msg == "JSON at byte 1: expected string or array", msg
   var triple = (0, "", false)
   check not tryFromJson("[1,\"x\"]", triple, msg)
   check msg.endsWith("expected array with 3 elements"), msg

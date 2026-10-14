@@ -21,14 +21,47 @@ type
   UnknownFieldPolicy* = enum
     ufSkip, ufReject
 
+  JsonError = enum
+    ## Parse failures; `ErrorMessages` holds their text.
+    errNone
+    errCustom  ## a custom reader's message, kept in `message`
+    errEscape
+    errUnicodeIncomplete
+    errUnicodeInvalid
+    errStringUnterminated
+    errStringExpected
+    errNullExpected
+    errBoolExpected
+    errIntIncomplete
+    errDigitExpected
+    errIntOverflow
+    errIntExpected
+    errUnsignedNegative
+    errNumberExpected
+    errObjectExpected
+    errArrayExpected
+    errDepthExceeded
+    errObjectUnterminated
+    errArrayUnterminated
+    errObjectCommaExpected
+    errArrayCommaExpected
+    errObjectTrailingComma
+    errArrayTrailingComma
+    errColonExpected
+    errValueExpected
+    errContainerUnterminated
+    errTrailingData
+    errEnumExpected
+
   JsonParser* = object
     ## Parses JSON for custom `readJson` overloads. A cursor over a borrowed
     ## view of the input.
     data: openArray[char]
     pos: Natural
     depth: int
-    failed: bool
-    errorMsg: string
+    err: JsonError    ## the first error; later ones are ignored
+    errorPos: int     ## where `err` was found
+    message: string   ## the text of an `errCustom` error
 
   JsonWriter* = object
     ## Writes JSON for custom `writeJson` overloads.
@@ -57,21 +90,67 @@ func `$`*(value: CanonRawJson): string {.inline.} = string(value)
 
 const
   DepthLimit = 1_000
+  ErrorMessages: array[JsonError, string] = [
+    "no error",
+    "", # errCustom: the text is in `JsonParser.message`
+    "incomplete escape",
+    "incomplete Unicode escape",
+    "invalid Unicode escape",
+    "unterminated string",
+    "expected string",
+    "expected null",
+    "expected boolean",
+    "incomplete integer",
+    "expected digit",
+    "integer overflow",
+    "expected integer",
+    "negative value for unsigned integer",
+    "expected number",
+    "expected object",
+    "expected array",
+    "maximum nesting depth exceeded",
+    "unterminated object",
+    "unterminated array",
+    "expected comma or end of object",
+    "expected comma or end of array",
+    "trailing comma in object",
+    "trailing comma in array",
+    "expected colon",
+    "expected value",
+    "unterminated container",
+    "trailing data",
+    "expected a known enum value"
+  ]
 
 # ── errors ────────────────────────────────────────────────────────────────
 
-proc parseError*(p: var JsonParser; msg: string) {.noinline.} =
-  ## Records a parse error for custom `readJson` overloads. The first error
-  ## wins; the parser then stands at the end of the input, so every later read
-  ## fails without doing work and every loop over fields or elements ends.
-  if not p.failed:
-    p.failed = true
-    p.errorMsg = "JSON at byte " & $p.pos & ": " & msg
+proc setError(p: var JsonParser; err: JsonError) {.noinline.} =
+  # The first error wins; the parser then stands at the end of the input, so
+  # every later read fails without doing work and every loop ends.
+  if p.err == errNone:
+    p.err = err
+    p.errorPos = p.pos
   p.pos = p.data.len
+
+proc parseError*(p: var JsonParser; msg: string) {.noinline.} =
+  ## Records a parse error for custom `readJson` overloads. As with built-in
+  ## errors, only the first one is kept and every later read does nothing.
+  if p.err == errNone:
+    p.message = msg
+  p.setError(errCustom)
 
 func hasError*(p: JsonParser): bool {.inline.} =
   ## Whether a parse error has been recorded.
-  p.failed
+  p.err != errNone
+
+proc errorMsg(p: JsonParser): string =
+  ## Formats the recorded error; only called once a caller wants the text.
+  result = "JSON at byte " & $p.errorPos & ": "
+  if p.err == errCustom:
+    result.add p.message
+  elif ord(p.err) >= 0 and ord(p.err) <= ord(high(JsonError)):
+    # An enum conversion is not range checked; this lets the index be proven.
+    result.add ErrorMessages[p.err]
 
 proc writeError*(w: var JsonWriter) {.inline.} =
   ## Marks the output as failed for custom `writeJson` overloads; `toJson`
@@ -147,7 +226,7 @@ proc readHex(p: var JsonParser): int =
   ## Four hex digits; the cursor must stand on the first.
   let i = p.pos
   if i >= p.data.len - 3:
-    p.parseError("incomplete Unicode escape")
+    p.setError(errUnicodeIncomplete)
     result = 0
   else:
     let a = hexValue(p.data[i])
@@ -155,7 +234,7 @@ proc readHex(p: var JsonParser): int =
     let c = hexValue(p.data[i + 2])
     let d = hexValue(p.data[i + 3])
     if (a or b or c or d) < 0:
-      p.parseError("invalid Unicode escape")
+      p.setError(errUnicodeInvalid)
       result = 0
     else:
       result = (a shl 12) or (b shl 8) or (c shl 4) or d
@@ -193,7 +272,7 @@ proc parseStringBody(p: var JsonParser; dst: var string): bool =
         dst.addSpan(p.data, runStart, p.pos)
         inc p.pos
         if p.pos >= p.data.len:
-          p.parseError("incomplete escape")
+          p.setError(errEscape)
         else:
           let escaped = p.data[p.pos]
           inc p.pos
@@ -215,7 +294,7 @@ proc parseStringBody(p: var JsonParser; dst: var string): bool =
               let low = p.readHex()
               if low in 0xdc00..0xdfff:
                 codePoint = 0x10000 + ((codePoint - 0xd800) shl 10) + (low - 0xdc00)
-              elif not p.failed:
+              elif not p.hasError:
                 # Leave this six-byte escape for the next iteration.
                 p.pos = mark
             dst.addCodePoint(codePoint)
@@ -224,7 +303,7 @@ proc parseStringBody(p: var JsonParser; dst: var string): bool =
             dst.add escaped
           runStart = p.pos
   if not closed:
-    p.parseError("unterminated string")
+    p.setError(errStringUnterminated)
 
 proc openString(p: var JsonParser): bool {.inline.} =
   ## Consumes the opening quote of the next value.
@@ -233,12 +312,12 @@ proc openString(p: var JsonParser): bool {.inline.} =
   if result:
     inc p.pos
   else:
-    p.parseError("expected string")
+    p.setError(errStringExpected)
 
 proc readString(p: var JsonParser; dst: var string) =
   if p.openString():
     let start = p.pos
-    if not p.parseStringBody(dst) and not p.failed:
+    if not p.parseStringBody(dst) and not p.hasError:
       dst.setLen(0)
       dst.addSpan(p.data, start, p.pos - 1)
 
@@ -253,7 +332,7 @@ proc consumeNull(p: var JsonParser): bool {.inline.} =
 
 proc readNull(p: var JsonParser) =
   if not p.consumeNull():
-    p.parseError("expected null")
+    p.setError(errNullExpected)
 
 proc readBool(p: var JsonParser; dst: var bool) =
   p.skip()
@@ -267,7 +346,7 @@ proc readBool(p: var JsonParser; dst: var bool) =
     dst = false
     p.pos = i + 5
   else:
-    p.parseError("expected boolean")
+    p.setError(errBoolExpected)
 
 proc scanNumber(p: var JsonParser): int =
   # Matches the permissive token shape used by `std/parsejson.parseNumber`.
@@ -294,10 +373,10 @@ proc readInt[T: SomeInteger](p: var JsonParser; dst: var T) =
     negative = true
     inc pos
   if pos >= p.data.len:
-    p.parseError("incomplete integer")
+    p.setError(errIntIncomplete)
   elif not isDigit(p.data[pos]):
     p.pos = pos
-    p.parseError("expected digit")
+    p.setError(errDigitExpected)
   else:
     let limit =
       when T is SomeUnsignedInt:
@@ -315,13 +394,13 @@ proc readInt[T: SomeInteger](p: var JsonParser; dst: var T) =
       inc pos
     p.pos = pos
     if overflow:
-      p.parseError("integer overflow")
+      p.setError(errIntOverflow)
     elif pos < p.data.len and (p.data[pos] == '.' or p.data[pos] == 'e' or p.data[pos] == 'E'):
-      p.parseError("expected integer")
+      p.setError(errIntExpected)
     else:
       when T is SomeUnsignedInt:
         if negative and value != 0'u64:
-          p.parseError("negative value for unsigned integer")
+          p.setError(errUnsignedNegative)
         else:
           dst = T(value)
       else:
@@ -341,20 +420,22 @@ template readFloat(p: var JsonParser; dst: untyped) =
   if consumed > 0:
     p.pos = start + consumed
   else:
-    p.parseError("expected number")
+    p.setError(errNumberExpected)
 
 # ── containers ────────────────────────────────────────────────────────────
 
-proc containerError(p: var JsonParser; msg: string; bracket: char) {.noinline.} =
-  p.parseError(msg & (if bracket == '{' or bracket == '}': "object" else: "array"))
+proc containerError(p: var JsonParser; objectErr: JsonError; bracket: char) {.noinline.} =
+  # Kept out of line so `nextItem` stays small enough to inline. Every object
+  # error is followed by its array twin in `JsonError`.
+  p.setError(if bracket == '{' or bracket == '}': objectErr else: succ(objectErr))
 
 proc beginContainer(p: var JsonParser; open: char) {.inline.} =
   ## Consumes `open`, which is `{` or `[`.
   p.skip()
   if p.pos >= p.data.len or p.data[p.pos] != open:
-    p.containerError("expected ", open)
+    p.containerError(errObjectExpected, open)
   elif p.depth > DepthLimit:
-    p.parseError("maximum nesting depth exceeded")
+    p.setError(errDepthExceeded)
   else:
     inc p.pos
     inc p.depth
@@ -365,7 +446,7 @@ proc nextItem(p: var JsonParser; first: var bool; close: char): bool {.inline.} 
   p.skip()
   result = false
   if p.pos >= p.data.len:
-    p.containerError("unterminated ", close)
+    p.containerError(errObjectUnterminated, close)
   elif first:
     first = false
     if p.data[p.pos] == close:
@@ -377,12 +458,12 @@ proc nextItem(p: var JsonParser; first: var bool; close: char): bool {.inline.} 
     inc p.pos
     dec p.depth
   elif p.data[p.pos] != ',':
-    p.containerError("expected comma or end of ", close)
+    p.containerError(errObjectCommaExpected, close)
   else:
     inc p.pos
     p.skip()
     if p.pos < p.data.len and p.data[p.pos] == close:
-      p.containerError("trailing comma in ", close)
+      p.containerError(errObjectTrailingComma, close)
     else:
       result = true
 
@@ -394,7 +475,7 @@ proc nextField(p: var JsonParser; first: var bool; nameStart, nameStop: var int;
   result = p.nextItem(first, '}')
   if result:
     if p.pos >= p.data.len or p.data[p.pos] != '"':
-      p.parseError("expected string")
+      p.setError(errStringExpected)
       result = false
     else:
       inc p.pos
@@ -410,7 +491,7 @@ proc nextField(p: var JsonParser; first: var bool; nameStart, nameStop: var int;
         escaped = p.parseStringBody(name)
       p.skip()
       if p.pos >= p.data.len or p.data[p.pos] != ':':
-        p.parseError("expected colon")
+        p.setError(errColonExpected)
         result = false
       else:
         inc p.pos
@@ -437,7 +518,7 @@ iterator jsonStrings(p: var JsonParser): openArray[char] {.sideEffect.} =
     let start = p.pos
     var decoded = ""
     let escaped = p.parseStringBody(decoded)
-    if not p.failed:
+    if not p.hasError:
       if escaped:
         yield decoded.toOpenArray(0, decoded.len - 1)
       else:
@@ -455,19 +536,19 @@ proc skipString(p: var JsonParser) =
         else: # a backslash
           inc p.pos
           if p.pos >= p.data.len:
-            p.parseError("incomplete escape")
+            p.setError(errEscape)
           else:
             let escaped = p.data[p.pos]
             inc p.pos
             if escaped == 'u': discard p.readHex()
     if not closed:
-      p.parseError("unterminated string")
+      p.setError(errStringUnterminated)
 
 proc skipJson*(p: var JsonParser) =
   ## Consumes and validates one JSON value without materializing it.
   p.skip()
   if p.pos >= p.data.len:
-    p.parseError("expected value")
+    p.setError(errValueExpected)
   else:
     case p.data[p.pos]
     of 'n': p.readNull()
@@ -484,7 +565,7 @@ proc skipJson*(p: var JsonParser) =
     of '{':
       for _ in p.jsonFields: p.skipJson()
     else:
-      p.parseError("expected value")
+      p.setError(errValueExpected)
 
 proc kind*(p: var JsonParser): JsonKind =
   ## Returns the kind of the next JSON value without consuming it. After an
@@ -492,7 +573,7 @@ proc kind*(p: var JsonParser): JsonKind =
   p.skip()
   result = jkNull
   if p.pos >= p.data.len:
-    p.parseError("expected value")
+    p.setError(errValueExpected)
   else:
     case p.data[p.pos]
     of 'n': result = jkNull
@@ -501,14 +582,14 @@ proc kind*(p: var JsonParser): JsonKind =
     of '[': result = jkArray
     of '{': result = jkObject
     of '-', '.', '0'..'9': result = jkNumber
-    else: p.parseError("expected value")
+    else: p.setError(errValueExpected)
 
 proc finish(p: var JsonParser) =
   if p.depth != 0:
-    p.parseError("unterminated container")
+    p.setError(errContainerUnterminated)
   p.skip()
   if p.pos != p.data.len:
-    p.parseError("trailing data")
+    p.setError(errTrailingData)
 
 # ── readers ───────────────────────────────────────────────────────────────
 
@@ -553,24 +634,24 @@ proc readEnum[T: HoleyEnum](p: var JsonParser; dst: var T): bool =
 
 proc readJson*[T: OrdinalEnum](dst: var T; p: var JsonParser;
                                unknownFields: UnknownFieldPolicy) =
-  if not p.readEnum(dst) and not p.failed:
-    p.parseError("expected a known enum value")
+  if not p.readEnum(dst) and not p.hasError:
+    p.setError(errEnumExpected)
 
 proc readJson*[T: HoleyEnum](dst: var T; p: var JsonParser;
                              unknownFields: UnknownFieldPolicy) =
-  if not p.readEnum(dst) and not p.failed:
-    p.parseError("expected a known enum value")
+  if not p.readEnum(dst) and not p.hasError:
+    p.setError(errEnumExpected)
 
 proc readJson*[T: OrdinalEnum](dst: var T; p: var JsonParser;
                                unknownFields: UnknownFieldPolicy; fallback: T) =
   ## Reads an enum using its exact JSON spelling, or stores `fallback` when the
   ## input string is unknown.
-  if not p.readEnum(dst) and not p.failed:
+  if not p.readEnum(dst) and not p.hasError:
     dst = fallback
 
 proc readJson*[T: HoleyEnum](dst: var T; p: var JsonParser;
                              unknownFields: UnknownFieldPolicy; fallback: T) =
-  if not p.readEnum(dst) and not p.failed:
+  if not p.readEnum(dst) and not p.hasError:
     dst = fallback
 
 proc readJson*[T: JsonReadable](dst: var Option[T]; p: var JsonParser;
@@ -628,7 +709,7 @@ proc readJson*[I; T: JsonReadable](dst: var array[I, T]; p: var JsonParser;
   for item in mitems(dst):
     if p.nextItem(first, ']'):
       readJson(item, p, unknownFields)
-    elif not p.failed:
+    elif not p.hasError:
       p.lengthError(dst.len)
   if p.nextItem(first, ']'):
     p.lengthError(dst.len)
@@ -667,7 +748,7 @@ proc readJson*[T: tuple](dst: var T; p: var JsonParser;
     for field in fields(dst):
       if p.nextItem(first, ']'):
         readJson(field, p, unknownFields)
-      elif not p.failed:
+      elif not p.hasError:
         p.lengthError(length)
     if p.nextItem(first, ']'):
       p.lengthError(length)
@@ -838,7 +919,7 @@ proc readJson*(dst: var RawJson; p: var JsonParser; unknownFields: UnknownFieldP
   p.skip()
   let start = p.pos
   p.skipJson()
-  if not p.failed:
+  if not p.hasError:
     dst = RawJson(toString(p.data, start, p.pos))
 
 proc writeJson*(w: var JsonWriter; value: RawJson) =
@@ -883,7 +964,7 @@ proc readJson*(dst: var CanonRawJson; p: var JsonParser;
                unknownFields: UnknownFieldPolicy) =
   var writer = JsonWriter(data: "", failed: false)
   p.canonicalizeValue(writer)
-  if not p.failed:
+  if not p.hasError:
     dst = CanonRawJson(move writer.data)
 
 proc writeJson*(w: var JsonWriter; value: CanonRawJson) =
@@ -896,17 +977,20 @@ proc tryFromJson*[T: JsonReadable](input: string; dst: var T; errorMsg: var stri
   ## Decodes one complete JSON value into `dst`. On malformed input returns
   ## false and stores a message (`JSON at byte N: ...`) in `errorMsg`; `dst`
   ## may then be partially written.
-  var reader = JsonParser(data: input, pos: 0, depth: 0, failed: false, errorMsg: "")
+  var reader = JsonParser(data: input)
   readJson(dst, reader, unknownFields)
   reader.finish()
-  result = not reader.failed
+  result = not reader.hasError
   if not result:
-    errorMsg = move reader.errorMsg
+    errorMsg = reader.errorMsg
 
 proc fromJson*[T: JsonReadable](input: string; dst: var T;
                   unknownFields = ufSkip) {.raises.} =
   ## Decodes one complete JSON value into `dst`. Raises `ValueError` when the
   ## input is malformed or does not match `T`.
+  # Going through `tryFromJson` costs one message on failure, but keeps the
+  # decode out of the caller: inlined there, gcc stops expanding the
+  # field-name compares and calls `memcmp` (objects_known +4%).
   var errorMsg = ""
   if not tryFromJson(input, dst, errorMsg, unknownFields):
     raise ValueError
@@ -941,15 +1025,15 @@ iterator jsonItems*[T: JsonReadable](input: string;
                        unknownFields = ufSkip): T {.raises, sideEffect.} =
   ## Iterates the values in one top-level JSON array: `for x in jsonItems[T](s)`.
   ## Raises `ValueError` after the last good item when the input is malformed.
-  var reader = JsonParser(data: input, pos: 0, depth: 0, failed: false, errorMsg: "")
+  var reader = JsonParser(data: input)
   reader.beginContainer('[')
   var first = true
   while reader.nextItem(first, ']'):
     var value = default(T)
     readJson(value, reader, unknownFields)
-    if not reader.failed:
+    if not reader.hasError:
       yield value
   reader.finish()
-  if reader.failed:
+  if reader.hasError:
     raise ValueError
 
